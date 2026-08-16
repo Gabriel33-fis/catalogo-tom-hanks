@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Catálogo Tom Hanks</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #141414; color: #fff; padding: 20px; }
+    
+    header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #333; margin-bottom: 25px; }
+    h1 { color: #e50914; font-size: 1.8rem; }
+    
+    .auth-bar { display: flex; align-items: center; gap: 15px; }
+    .btn { background: #e50914; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    .btn:hover { background: #b80710; }
+    .btn-secondary { background: #333; }
+    .btn-secondary:hover { background: #444; }
+    .btn-fav { background: #444; color: #fff; }
+    .btn-fav.active { background: #27ae60; color: #fff; }
+
+    #auth-container { max-width: 400px; margin: 40px auto; background: #222; padding: 25px; border-radius: 8px; }
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: #aaa; }
+    .form-group input { width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #444; background: #111; color: #fff; }
+    .form-toggle { margin-top: 15px; font-size: 0.85rem; text-align: center; color: #aaa; cursor: pointer; text-decoration: underline; }
+
+    .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+    .tab-btn { background: #222; color: #aaa; border: 1px solid #333; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    .tab-btn.active { background: #e50914; color: #fff; border-color: #e50914; }
+
+    .movies-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
+    .movie-card { background: #1f1f1f; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid #2a2a2a; }
+    .movie-card img { width: 100%; height: 320px; object-fit: cover; background: #2a2a2a; }
+    .movie-info { padding: 15px; flex-grow: 1; display: flex; flex-direction: column; }
+    .movie-title { font-size: 1.05rem; font-weight: bold; margin-bottom: 8px; }
+    .movie-overview { font-size: 0.8rem; color: #bbb; line-height: 1.3; max-height: 70px; overflow-y: auto; margin-bottom: 15px; }
+    .movie-actions { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; }
+    .modal-content { background: #222; padding: 25px; border-radius: 8px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
+    .comment-item { background: #111; padding: 10px; border-radius: 4px; margin-bottom: 10px; font-size: 0.9rem; border-left: 3px solid #e50914; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🎬 Catálogo Tom Hanks</h1>
+    <div class="auth-bar" id="user-status">
+      <span>Não conectado</span>
+    </div>
+  </header>
+
+  <!-- Login e Cadastro -->
+  <div id="auth-container">
+    <h2 id="form-title" style="margin-bottom: 15px;">Login</h2>
+    <div class="form-group" id="group-nome" style="display: none;">
+      <label>Nome:</label>
+      <input type="text" id="input-nome" placeholder="Seu nome" />
+    </div>
+    <div class="form-group">
+      <label>E-mail:</label>
+      <input type="email" id="input-email" placeholder="seu@email.com" />
+    </div>
+    <div class="form-group">
+      <label>Senha:</label>
+      <input type="password" id="input-senha" placeholder="Sua senha" />
+    </div>
+    <button class="btn" style="width: 100%;" id="btn-auth-submit">Entrar</button>
+    <div class="form-toggle" id="form-toggle-text">Não tem conta? Cadastre-se</div>
+  </div>
+
+  <!-- Catálogo -->
+  <main id="app-container" style="display: none;">
+    <div class="tabs">
+      <button class="tab-btn active" id="tab-todos">Todos os Filmes</button>
+      <button class="tab-btn" id="tab-favs">Meus Favoritos</button>
+    </div>
+    <div class="movies-grid" id="movies-container"></div>
+  </main>
+
+  <!-- Modal de Comentários -->
+  <div class="modal" id="modal-comentarios">
+    <div class="modal-content">
+      <h3 id="modal-movie-title" style="margin-bottom: 15px;">Comentários</h3>
+      <div id="comentarios-lista" style="margin-bottom: 15px; max-height: 200px; overflow-y: auto;"></div>
+      <div class="form-group">
+        <label>Deixe sua anotação/comentário:</label>
+        <input type="text" id="input-comentario" placeholder="Escreva aqui..." />
+      </div>
+      <div style="display: flex; gap: 10px;">
+        <button class="btn" id="btn-salvar-comentario">Salvar Comentário</button>
+        <button class="btn btn-secondary" id="btn-fechar-modal">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = "/api";
+    let token = localStorage.getItem("token");
+    let usuarioNome = localStorage.getItem("usuario_nome");
+    let isCadastro = false;
+    let abaAtual = "todos";
+    let todosOsFilmes = [];
+    let favoritosSet = new Set();
+    let filmeAtivoId = null;
+
+    function alternarModoAuth() {
+      isCadastro = !isCadastro;
+      document.getElementById("form-title").innerText = isCadastro ? "Criar Conta" : "Login";
+      document.getElementById("group-nome").style.display = isCadastro ? "block" : "none";
+      document.getElementById("btn-auth-submit").innerText = isCadastro ? "Cadastrar" : "Entrar";
+      document.getElementById("form-toggle-text").innerText = isCadastro ? "Já tem conta? Faça Login" : "Não tem conta? Cadastre-se";
+    }
+
+    async function processarAutenticacao() {
+      const email = document.getElementById("input-email").value.trim();
+      const senha = document.getElementById("input-senha").value.trim();
+
+      if (!email || !senha) {
+        alert("Preencha todos os campos.");
+        return;
+      }
+
+      try {
+        if (isCadastro) {
+          const nome = document.getElementById("input-nome").value.trim();
+          if (!nome) {
+            alert("Preencha seu nome.");
+            return;
+          }
+
+          const resp = await fetch(`${API_URL}/cadastro`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nome, email, senha })
+          });
+          
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.detail || "Erro no cadastro.");
+          
+          alert("Cadastro realizado com sucesso! Faça login com sua conta.");
+          alternarModoAuth();
+        } else {
+          const resp = await fetch(`${API_URL}/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, senha })
+          });
+          
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.detail || "Erro no login.");
+          
+          token = data.access_token;
+          usuarioNome = data.usuario_nome;
+          localStorage.setItem("token", token);
+          localStorage.setItem("usuario_nome", usuarioNome);
+          exibirApp();
+        }
+      } catch (err) {
+        alert("Erro: " + err.message);
+      }
+    }
+
+    function logout() {
+      localStorage.clear();
+      token = null;
+      usuarioNome = null;
+      document.getElementById("auth-container").style.display = "block";
+      document.getElementById("app-container").style.display = "none";
+      document.getElementById("user-status").innerHTML = "<span>Não conectado</span>";
+    }
+
+    async function exibirApp() {
+      document.getElementById("auth-container").style.display = "none";
+      document.getElementById("app-container").style.display = "block";
+      document.getElementById("user-status").innerHTML = `
+        <span>Olá, <b>${usuarioNome}</b></span>
+        <button class="btn btn-secondary" id="btn-logout">Sair</button>
+      `;
+      document.getElementById("btn-logout").addEventListener("click", logout);
+      await carregarDados();
+    }
+
+    async function carregarDados() {
+      try {
+        const [respFilmes, respFavs] = await Promise.all([
+          fetch(`${API_URL}/filmes`),
+          fetch(`${API_URL}/favoritos`, { headers: { "Authorization": `Bearer ${token}` } })
+        ]);
+
+        todosOsFilmes = await respFilmes.json();
+        const favs = await respFavs.json();
+        favoritosSet = new Set(favs.map(f => f.tmdb_movie_id));
+
+        renderizarFilmes();
+      } catch (err) {
+        console.error("Erro ao carregar dados:", err);
+      }
+    }
+
+    function alternarAba(aba) {
+      abaAtual = aba;
+      document.getElementById("tab-todos").classList.toggle("active", aba === "todos");
+      document.getElementById("tab-favs").classList.toggle("active", aba === "favs");
+      renderizarFilmes();
+    }
+
+    function renderizarFilmes() {
+      const container = document.getElementById("movies-container");
+      container.innerHTML = "";
+
+      const filmesParaExibir = abaAtual === "todos" 
+        ? todosOsFilmes 
+        : todosOsFilmes.filter(f => favoritosSet.has(f.tmdb_movie_id));
+
+      if (!filmesParaExibir || filmesParaExibir.length === 0) {
+        container.innerHTML = "<p style='color: #888;'>Nenhum filme encontrado nesta seção.</p>";
+        return;
+      }
+
+      filmesParaExibir.forEach(filme => {
+        const isFav = favoritosSet.has(filme.tmdb_movie_id);
+        const card = document.createElement("div");
+        card.className = "movie-card";
+        card.innerHTML = `
+          <img src="${filme.poster_url || 'https://via.placeholder.com/500x750?text=Sem+Poster'}" alt="${filme.titulo}" />
+          <div class="movie-info">
+            <div class="movie-title">${filme.titulo}</div>
+            <div class="movie-overview">${filme.sinopse}</div>
+            <div class="movie-actions">
+              <button class="btn ${isFav ? 'btn-fav active' : 'btn-fav'}" data-fav-id="${filme.tmdb_movie_id}">
+                ${isFav ? "★ Favoritado" : "☆ Favoritar"}
+              </button>
+              <button class="btn btn-secondary" data-comment-id="${filme.tmdb_movie_id}">
+                💬 Comentários
+              </button>
+            </div>
+          </div>
+        `;
+
+        card.querySelector(`[data-fav-id="${filme.tmdb_movie_id}"]`).addEventListener("click", () => {
+          toggleFavorito(filme.tmdb_movie_id, filme.titulo, filme.poster_url || "");
+        });
+
+        card.querySelector(`[data-comment-id="${filme.tmdb_movie_id}"]`).addEventListener("click", () => {
+          abrirModalComentarios(filme.tmdb_movie_id, filme.titulo);
+        });
+
+        container.appendChild(card);
+      });
+    }
+
+    async function toggleFavorito(tmdbId, titulo, posterUrl) {
+      const isFav = favoritosSet.has(tmdbId);
+      if (isFav) {
+        await fetch(`${API_URL}/favoritos/${tmdbId}`, {
+          method: "DELETE",
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        favoritosSet.delete(tmdbId);
+      } else {
+        await fetch(`${API_URL}/favoritos`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ tmdb_movie_id: tmdbId, titulo: titulo, poster_path: posterUrl })
+        });
+        favoritosSet.add(tmdbId);
+      }
+      renderizarFilmes();
+    }
+
+    async function abrirModalComentarios(tmdbId, titulo) {
+      filmeAtivoId = tmdbId;
+      document.getElementById("modal-movie-title").innerText = `Comentários: ${titulo}`;
+      document.getElementById("input-comentario").value = "";
+      document.getElementById("modal-comentarios").style.display = "flex";
+
+      const resp = await fetch(`${API_URL}/comentarios/${tmdbId}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const comentarios = await resp.json();
+      const lista = document.getElementById("comentarios-lista");
+      lista.innerHTML = comentarios.length === 0 ? "<p style='color: #888;'>Nenhum comentário ainda.</p>" : "";
+
+      comentarios.forEach(c => {
+        const item = document.createElement("div");
+        item.className = "comment-item";
+        item.innerText = c.texto;
+        lista.appendChild(item);
+      });
+    }
+
+    async function salvarComentario() {
+      const texto = document.getElementById("input-comentario").value.trim();
+      if (!texto) return;
+
+      await fetch(`${API_URL}/comentarios`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ tmdb_movie_id: filmeAtivoId, texto })
+      });
+
+      const movieTitle = document.getElementById("modal-movie-title").innerText.replace("Comentários: ", "");
+      abrirModalComentarios(filmeAtivoId, movieTitle);
+    }
+
+    function fecharModal() {
+      document.getElementById("modal-comentarios").style.display = "none";
+    }
+
+    // Registra os ouvintes de evento
+    document.getElementById("btn-auth-submit").addEventListener("click", processarAutenticacao);
+    document.getElementById("form-toggle-text").addEventListener("click", alternarModoAuth);
+    document.getElementById("tab-todos").addEventListener("click", () => alternarAba("todos"));
+    document.getElementById("tab-favs").addEventListener("click", () => alternarAba("favs"));
+    document.getElementById("btn-salvar-comentario").addEventListener("click", salvarComentario);
+    document.getElementById("btn-fechar-modal").addEventListener("click", fecharModal);
+
+    if (token) {
+      exibirApp();
+    }
+  </script>
+</body>
+</html>
