@@ -3,7 +3,7 @@
 Aplicação desenvolvida para a disciplina de Introdução à Computação em Nuvem.
 
 ## Professor
-Avaliação: @siriani
+Avaliação: [@siriani](https://github.com/siriani)
 
 ## Funcionalidades
 - Consumo da API TMDB em tempo real (dados dinâmicos).
