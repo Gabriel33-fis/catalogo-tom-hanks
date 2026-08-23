@@ -5,29 +5,30 @@ from email.mime.multipart import MIMEMultipart
 
 MAILTRAP_HOST = os.getenv("MAILTRAP_HOST", "sandbox.smtp.mailtrap.io")
 MAILTRAP_PORT = int(os.getenv("MAILTRAP_PORT", 2525))
-MAILTRAP_USER = os.getenv("MAILTRAP_USER", "")
-MAILTRAP_PASS = os.getenv("MAILTRAP_PASS", "")
+MAILTRAP_USER = os.getenv("MAILTRAP_USER")
+MAILTRAP_PASS = os.getenv("MAILTRAP_PASS")
+BASE_PUBLIC_URL = os.getenv("BASE_PUBLIC_URL", "https://gabriel-graciano-isw055.lapps.studio")
 
-def enviar_email_recuperacao(destinatario: str, link_recuperacao: str, token: str):
-    remetente = "nao-responda@tomhanks-catalogo.com"
-    assunto = "Recuperação de Senha - Catálogo Tom Hanks"
+def enviar_email_recuperacao(destinatario: str, token: str):
+    link_recuperacao = f"{BASE_PUBLIC_URL}/redefinir-senha?token={token}"
     
-    corpo = f"""
-Olá!
-Você solicitou a recuperação da sua senha.
-Acesse o link abaixo para criar uma nova senha (válido por 30 minutos):
-{link_recuperacao}
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Recuperação de Senha - Catálogo Tom Hanks"
+    msg["From"] = "no-reply@tomhanks-catalogo.com"
+    msg["To"] = destinatario
 
-Se você não solicitou, ignore esta mensagem.
-"""
-
-    mensagem = MIMEMultipart()
-    mensagem["From"] = remetente
-    mensagem["To"] = destinatario
-    mensagem["Subject"] = assunto
-    mensagem.attach(MIMEText(corpo, "plain", "utf-8"))
+    corpo_html = f"""
+    <h2>Recuperação de Senha</h2>
+    <p>Você solicitou a redefinição de senha da sua conta.</p>
+    <p>Clique no link abaixo para criar uma nova senha (válido por 15 minutos):</p>
+    <p><a href="{link_recuperacao}" style="background-color: #007bff; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px;">Redefinir Minha Senha</a></p>
+    <p>Ou copie e cole o link: {link_recuperacao}</p>
+    <p>Se não solicitou, ignore este e-mail.</p>
+    """
+    
+    msg.attach(MIMEText(corpo_html, "html"))
 
     with smtplib.SMTP(MAILTRAP_HOST, MAILTRAP_PORT) as server:
         server.starttls()
         server.login(MAILTRAP_USER, MAILTRAP_PASS)
-        server.sendmail(remetente, destinatario, mensagem.as_string())
+        server.sendmail(msg["From"], [destinatario], msg.as_string())
