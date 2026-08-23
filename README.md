@@ -14,13 +14,26 @@
 
 ---
 
+## 📸 Evidências de Funcionamento (Atividade 3)
+
+### 1. E-mail de Recuperação Recebido no Mailtrap Sandbox
+![Mailtrap Inbox](prints/print_1_mailtrap.png)
+
+### 2. Confirmação de Senha Redefinida com Sucesso
+![Sucesso Redefinição](prints/print_2_sucesso_redefinicao.png)
+
+### 3. Bloqueio de Segurança com Token Inválido/Expirado
+![Bloqueio Token Inválido](prints/print_3_token_invalido.png)
+
+---
+
 ## 📌 O que mudou nesta versão (Atividade 3)
 
 A aplicação monolítica original foi refatorada e desacoplada em uma **Arquitetura de Microsserviços**:
 * **Desacoplamento de Autenticação (`auth_service`)**: Microsserviço isolado responsável por cadastro, login com tokens JWT (`PyJWT` + `Bcrypt`) e fluxo de recuperação de senha via SMTP.
 * **Isolamento de Rede (Segurança)**: O `auth_service` roda de forma privada dentro da rede interna Docker (`tom_hanks_net`), **sem portas expostas ao host**. Toda a comunicação externa é intermediada pelo `catalogo_service`.
 * **Serviço de Catálogo (`catalogo_service`)**: Consome a API do TMDB para listar os filmes do ator Tom Hanks, atua como proxy do serviço de autenticação e gerencia favoritos e comentários com persistência no MySQL.
-* **Recuperação de Senha com SMTP**: Fluxo de recuperação de senha com envio de e-mails via Mailtrap Sandbox e tokens com tempo de expiração de 30 minutos.
+* **Recuperação de Senha com SMTP**: Fluxo de recuperação de senha com envio de e-mails via Mailtrap Sandbox e tokens com tempo de expiração.
 
 ---
 
@@ -39,7 +52,6 @@ A aplicação monolítica original foi refatorada e desacoplada em uma **Arquite
       ┌───────────────────────┐
       │     auth_service      │  (FastAPI + JWT + Mailtrap + MySQL)
       └───────────────────────┘
-
       version: '3.8'
 
 services:
@@ -86,15 +98,3 @@ services:
 networks:
   tom_hanks_net:
     driver: bridge
----
-
-## 📸 Evidências de Funcionamento (Atividade 3)
-
-### 1. E-mail de Recuperação Recebido no Mailtrap Sandbox
-![Mailtrap Inbox](docs/print_1_mailtrap.png)
-
-### 2. Confirmação de Senha Redefinida com Sucesso
-![Sucesso Redefinição](docs/print_2_sucesso_redefinicao.png)
-
-### 3. Bloqueio de Segurança com Token Inválido/Expirado
-![Bloqueio Token Inválido](docs/print_3_token_invalido.png)
