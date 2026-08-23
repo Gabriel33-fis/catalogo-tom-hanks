@@ -86,6 +86,7 @@ services:
 networks:
   tom_hanks_net:
     driver: bridge
+---
 
 ## 📸 Evidências de Funcionamento (Atividade 3)
 
