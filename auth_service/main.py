@@ -43,7 +43,7 @@ def login(dados: schemas.LoginRequest, db: Session = Depends(get_db)):
             detail="Credenciais inválidas"
         )
     
-    token = auth.criar_token_acesso(
+    token = auth.criar_access_token(
         usuario_id=usuario.id,
         papel=usuario.papel,
         nome=usuario.nome
