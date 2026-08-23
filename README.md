@@ -56,7 +56,7 @@ services:
       - DB_PASSWORD=********
       - DB_NAME=IAC_2026_02_gabriel_graciano
       - TMDB_API_KEY=********
-      - JWT_SECRET=super_segredo_jwt_tom_hanks_fatec_2026
+      - JWT_SECRET=********
       - AUTH_SERVICE_URL=http://auth_service:5000
     depends_on:
       - auth_service
@@ -74,11 +74,11 @@ services:
       - DB_USER=IAC_2026_02_gabriel_graciano
       - DB_PASSWORD=********
       - DB_NAME=IAC_2026_02_gabriel_graciano
-      - JWT_SECRET=super_segredo_jwt_tom_hanks_fatec_2026
+      - JWT_SECRET=********
       - BASE_PUBLIC_URL=[https://gabriel-graciano-isw055.lapps.studio](https://gabriel-graciano-isw055.lapps.studio)
       - MAILTRAP_HOST=sandbox.smtp.mailtrap.io
       - MAILTRAP_PORT=2525
-      - MAILTRAP_USER=891b6bf689d033
+      - MAILTRAP_USER=********
       - MAILTRAP_PASS=********
     networks:
       - tom_hanks_net
