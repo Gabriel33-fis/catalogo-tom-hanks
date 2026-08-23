@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  catalogo_service:
+    build: ./catalogo_service
+    container_name: catalogo_service
+    restart: always
+    ports:
+      - "8207:8000"
+    environment:
+      - DB_HOST=35.226.64.52
+      - DB_PORT=3306
+      - DB_USER=IAC_2026_02_gabriel_graciano
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=IAC_2026_02_gabriel_graciano
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - AUTH_SERVICE_URL=http://auth_service:5000
+    depends_on:
+      - auth_service
+    networks:
+      - tom_hanks_net
+
+  auth_service:
+    build: ./auth_service
+    container_name: auth_service
+    restart: always
+    environment:
+      - DB_HOST=35.226.64.52
+      - DB_PORT=3306
+      - DB_USER=IAC_2026_02_gabriel_graciano
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=IAC_2026_02_gabriel_graciano
+      - JWT_SECRET=${JWT_SECRET}
+      - BASE_PUBLIC_URL=https://gabriel-graciano-isw055.lapps.studio
+      - MAILTRAP_HOST=sandbox.smtp.mailtrap.io
+      - MAILTRAP_PORT=2525
+      - MAILTRAP_USER=${MAILTRAP_USER}
+      - MAILTRAP_PASS=${MAILTRAP_PASS}
+    networks:
+      - tom_hanks_net
+
+networks:
+  tom_hanks_net:
+    driver: bridge

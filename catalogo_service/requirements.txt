@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pymysql
+cryptography
+PyJWT>=2.8.0
+httpx>=0.24.0
+requests
+jinja2
+pydantic
+python-dotenv
