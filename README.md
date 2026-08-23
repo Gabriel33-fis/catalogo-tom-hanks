@@ -86,3 +86,14 @@ services:
 networks:
   tom_hanks_net:
     driver: bridge
+
+## 📸 Evidências de Funcionamento (Atividade 3)
+
+### 1. E-mail de Recuperação Recebido no Mailtrap Sandbox
+![Mailtrap Inbox](docs/print_1_mailtrap.png)
+
+### 2. Confirmação de Senha Redefinida com Sucesso
+![Sucesso Redefinição](docs/print_2_sucesso_redefinicao.png)
+
+### 3. Bloqueio de Segurança com Token Inválido/Expirado
+![Bloqueio Token Inválido](docs/print_3_token_invalido.png)
