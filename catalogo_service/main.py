@@ -96,9 +96,12 @@ HTML_PAGE = """
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
         .modal-close { background: none; border: none; color: #aaa; font-size: 1.5rem; cursor: pointer; }
         .comments-list { flex: 1; overflow-y: auto; margin-bottom: 15px; max-height: 250px; }
-        .comment-item { background: #2a2a2a; padding: 10px; border-radius: 4px; margin-bottom: 10px; }
+        .comment-item { background: #2a2a2a; padding: 10px; border-radius: 4px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-start; }
+        .comment-body { flex: 1; }
         .comment-user { font-size: 0.85rem; font-weight: bold; color: #e50914; margin-bottom: 4px; }
         .comment-text { font-size: 0.9rem; color: #ddd; }
+        .btn-del-comment { background: #dc2626; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; margin-left: 10px; }
+        .btn-del-comment:hover { background: #b91c1c; }
     </style>
 </head>
 <body>
@@ -369,6 +372,7 @@ HTML_PAGE = """
 
         async function carregarComentariosDoFilme(movieId) {
             const token = localStorage.getItem('token');
+            const userPapel = localStorage.getItem('papel');
             const lista = document.getElementById('comments-list');
             lista.innerHTML = '<p style="color:#aaa;">Carregando...</p>';
             try {
@@ -384,14 +388,42 @@ HTML_PAGE = """
                 data.forEach(c => {
                     const item = document.createElement('div');
                     item.className = 'comment-item';
+                    
+                    let botaoExcluir = '';
+                    if (c.pode_apagar || userPapel === 'admin') {
+                        botaoExcluir = `<button class="btn-del-comment" onclick="apagarComentario(${c.id})">Excluir</button>`;
+                    }
+
                     item.innerHTML = `
-                        <div class="comment-user">${c.usuario_nome || 'Usuário #' + c.usuario_id}</div>
-                        <div class="comment-text">${c.texto}</div>
+                        <div class="comment-body">
+                            <div class="comment-user">${c.usuario_nome}</div>
+                            <div class="comment-text">${c.texto}</div>
+                        </div>
+                        ${botaoExcluir}
                     `;
                     lista.appendChild(item);
                 });
             } catch (e) {
                 lista.innerHTML = '<p style="color:#ef5350;">Erro ao carregar comentários.</p>';
+            }
+        }
+
+        async function apagarComentario(comentarioId) {
+            if (!confirm('Deseja realmente apagar este comentário?')) return;
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch(`/api/comentarios/${comentarioId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert(`Erro (${res.status}): ${data.detail || 'Não foi possível apagar o comentário.'}`);
+                    return;
+                }
+                await carregarComentariosDoFilme(filmeAtualComentario);
+            } catch (e) {
+                alert('Erro na requisição: ' + e.message);
             }
         }
 
@@ -432,8 +464,8 @@ HTML_PAGE = """
                 if (!res.ok) throw new Error(data.detail || 'Falha no login');
                 localStorage.setItem('token', data.access_token);
                 localStorage.setItem('usuario_nome', data.usuario_nome);
-                localStorage.setItem('papel', data.papel);
-                document.getElementById('nav-user-info').innerText = `${data.usuario_nome} [${data.papel}]`;
+                localStorage.setItem('papel', data.papel || data.role || 'usuario');
+                document.getElementById('nav-user-info').innerText = `${data.usuario_nome} [${data.papel || data.role || 'usuario'}]`;
                 document.getElementById('btn-logout').classList.remove('hidden');
                 document.getElementById('nav-tabs').classList.remove('hidden');
                 mostrarAba('catalogo');
@@ -630,14 +662,18 @@ def listar_comentarios(
     db: Session = Depends(get_db)
 ):
     comentarios = db.query(models.Comentario).filter(models.Comentario.tmdb_movie_id == tmdb_movie_id).order_by(models.Comentario.criado_em.desc()).all()
+    user_id = usuario.get("usuario_id")
+    papel = usuario.get("papel") or usuario.get("role")
+    
     return [
         {
             "id": c.id,
             "usuario_id": c.usuario_id,
-            "usuario_nome": usuario.get("nome", f"Usuário #{c.usuario_id}") if c.usuario_id == usuario.get("usuario_id") else f"Usuário #{c.usuario_id}",
+            "usuario_nome": f"Usuário #{c.usuario_id}",
             "tmdb_movie_id": c.tmdb_movie_id,
             "texto": c.texto,
-            "criado_em": str(c.criado_em)
+            "criado_em": str(c.criado_em),
+            "pode_apagar": (c.usuario_id == user_id or papel == "admin")
         }
         for c in comentarios
     ]
@@ -656,3 +692,29 @@ def comentar(
     db.add(novo_comentario)
     db.commit()
     return {"message": "Comentário adicionado com sucesso"}
+
+# --- RBAC: ENDPOINT DE EXCLUSÃO DE COMENTÁRIO ---
+
+@app.delete("/api/comentarios/{comentario_id}")
+def deletar_comentario(
+    comentario_id: int,
+    usuario: dict = Depends(auth_guard.obter_usuario_atual),
+    db: Session = Depends(get_db)
+):
+    comentario = db.query(models.Comentario).filter(models.Comentario.id == comentario_id).first()
+    if not comentario:
+        raise HTTPException(status_code=404, detail="Comentário não encontrado")
+
+    papel = usuario.get("papel") or usuario.get("role")
+    user_id = usuario.get("usuario_id")
+
+    # Regra RBAC: se não for admin e não for o autor do comentário, bloqueia com 403
+    if papel != "admin" and comentario.usuario_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso negado (403 Forbidden): apenas administradores podem apagar comentários de outros usuários."
+        )
+
+    db.delete(comentario)
+    db.commit()
+    return {"message": "Comentário removido com sucesso"}
