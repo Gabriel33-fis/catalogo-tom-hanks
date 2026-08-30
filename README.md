@@ -14,29 +14,7 @@
 
 ---
 
-## 📸 Evidências de Funcionamento (Atividade 4 - RBAC)
-
-### 1. Tentativa de Usuário Comum apagando comentário de outro usuário (HTTP 403 Forbidden)
-![Erro 403 Forbidden](https://raw.githubusercontent.com/Gabriel33-fis/catalogo-tom-hanks/main/prints/print_rbac_403_usuario.png)
-
-### 2. Administrador moderando e apagando o comentário com sucesso (HTTP 200 OK)
-![Sucesso 200 Admin](https://raw.githubusercontent.com/Gabriel33-fis/catalogo-tom-hanks/main/prints/print_rbac_200_admin.png)  
-![Sucesso 200 Admin 2](https://raw.githubusercontent.com/Gabriel33-fis/catalogo-tom-hanks/main/prints/print_rbac_200_admin2.png)
-
----
-
-## 📸 Evidências de Funcionamento (Atividade 3 - Autenticação & SMTP)
-
-### 1. E-mail de Recuperação Recebido no Mailtrap Sandbox
-![Mailtrap Inbox](https://raw.githubusercontent.com/Gabriel33-fis/catalogo-tom-hanks/main/prints/print_1_mailtrap.png)
-
-### 2. Confirmação de Senha Redefinida com Sucesso
-![Sucesso Redefinição](https://raw.githubusercontent.com/Gabriel33-fis/catalogo-tom-hanks/main/prints/print_2_sucesso_redefinicao.png)
-
-### 3. Bloqueio de Segurança com Token Inválido/Expirado
-![Bloqueio Token Inválido](https://raw.githubusercontent.com/Gabriel33-fis/catalogo-tom-hanks/main/prints/print_3_token_invalido.png)
-
----
+# 🛡️ Atividade 4: Controle de Acesso Baseado em Papel (RBAC)
 
 ## 🔐 1. Matriz de Permissões por Papel (RBAC)
 
@@ -67,7 +45,29 @@ A autorização é aplicada estritamente no backend (`catalogo_service`), garant
 
 ---
 
-## 🏗️ 3. Arquitetura e Rede Docker
+## 📸 3. Evidências Práticas de Funcionamento (RBAC)
+
+### 1. Tentativa de Usuário Comum apagando comentário de outro usuário (HTTP 403 Forbidden)
+![Erro 403 Forbidden](https://raw.githubusercontent.com/Gabriel33-fis/catalogo-tom-hanks/main/prints/print_rbac_403_usuario.png)
+
+### 2. Administrador moderando e apagando o comentário com sucesso (HTTP 200 OK)
+![Sucesso 200 Admin](https://raw.githubusercontent.com/Gabriel33-fis/catalogo-tom-hanks/main/prints/print_rbac_200_admin.png)  
+![Sucesso 200 Admin 2](https://raw.githubusercontent.com/Gabriel33-fis/catalogo-tom-hanks/main/prints/print_rbac_200_admin2.png)
+
+---
+
+# 📦 Atividade 3: Microsserviços e Autenticação com SMTP
+
+## 📌 Visão Geral da Arquitetura
+
+A aplicação monolítica original foi desacoplada em uma **Arquitetura de Microsserviços**:
+* **`auth_service`**: Microsserviço isolado em rede privada responsável por cadastro, login com hash de senha (`Bcrypt`), emissão de tokens JWT (`PyJWT`) e fluxo de recuperação de senha via SMTP.
+* **`catalogo_service`**: Consome a API do TMDB para listar os filmes do ator Tom Hanks, atua como proxy do serviço de autenticação e gerencia favoritos e comentários com persistência no MySQL.
+* **Isolamento de Rede**: O `auth_service` roda de forma privada dentro da rede interna Docker (`tom_hanks_net`), **sem portas expostas ao host**.
+
+---
+
+## 🏗️ Diagrama e Rede Docker
 
 ```text
        [ Usuário / Navegador ]
@@ -82,6 +82,7 @@ A autorização é aplicada estritamente no backend (`catalogo_service`), garant
       ┌───────────────────────┐
       │     auth_service      │  (FastAPI + JWT + Mailtrap + MySQL)
       └───────────────────────┘
+
       version: '3.8'
 
 services:
@@ -109,6 +110,7 @@ services:
     build: ./auth_service
     container_name: auth_service
     restart: always
+    # Sem seção 'ports' exposta ao host — isolado na rede interna
     environment:
       - DB_HOST=35.226.64.52
       - DB_PORT=3306
@@ -116,7 +118,7 @@ services:
       - DB_PASSWORD=********
       - DB_NAME=IAC_2026_02_gabriel_graciano
       - JWT_SECRET=********
-      - BASE_PUBLIC_URL=https://gabriel-graciano-isw055.lapps.studio
+      - BASE_PUBLIC_URL=[https://gabriel-graciano-isw055.lapps.studio](https://gabriel-graciano-isw055.lapps.studio)
       - MAILTRAP_HOST=sandbox.smtp.mailtrap.io
       - MAILTRAP_PORT=2525
       - MAILTRAP_USER=********
