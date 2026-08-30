@@ -67,6 +67,17 @@ A aplicação monolítica original foi desacoplada em uma **Arquitetura de Micro
 
 ---
 
+## 📸 Evidências de Funcionamento (Atividade 3)
+
+### 1. E-mail de Recuperação Recebido no Mailtrap Sandbox
+![Mailtrap Inbox](https://raw.githubusercontent.com/Gabriel33-fis/catalogo-tom-hanks/main/prints/print_1_mailtrap.png)
+
+### 2. Confirmação de Senha Redefinida com Sucesso
+![Sucesso Redefinição](https://raw.githubusercontent.com/Gabriel33-fis/catalogo-tom-hanks/main/prints/print_2_sucesso_redefinicao.png)
+
+### 3. Bloqueio de Segurança com Token Inválido/Expirado
+![Bloqueio Token Inválido](https://raw.githubusercontent.com/Gabriel33-fis/catalogo-tom-hanks/main/prints/print_3_token_invalido.png)
+
 ## 🏗️ Diagrama e Rede Docker
 
 ```text
