@@ -2,13 +2,38 @@ import os
 import json
 import urllib.request
 import urllib.error
-from fastapi import FastAPI, HTTPException, Depends, Request, status
+from fastapi import FastAPI, HTTPException, Depends, Request, status, Query
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from database import get_db, engine, Base
 import models
 import schemas
 import auth_guard
+import requests  
+
+LOG_SERVICE_URL = os.getenv("LOG_SERVICE_URL", "http://log_service:6000")
+
+def extrair_ip(request: Request) -> str:
+    """Extrai o IP real considerando proxies reversos ou direto do cliente."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "desconhecido"
+
+def registrar_log(usuario_id, acao, ip=None, detalhes=None):
+    try:
+        requests.post(
+            f"{LOG_SERVICE_URL}/logs",
+            json={
+                "usuario_id": usuario_id,
+                "acao": acao,
+                "ip_origem": ip,
+                "detalhes": detalhes
+            },
+            timeout=1.0
+        )
+    except Exception as e:
+        print(f"Aviso log_service: {e}")
 
 Base.metadata.create_all(bind=engine)
 
@@ -526,7 +551,16 @@ HTML_PAGE = """
             }
         }
 
-        function logout() {
+        async function logout() {
+            const token = localStorage.getItem('token');
+            if (token) {
+                try {
+                    await fetch('/api/auth/logout', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                } catch (e) {}
+            }
             localStorage.clear();
             document.getElementById('nav-user-info').innerText = 'Não conectado';
             document.getElementById('btn-logout').classList.add('hidden');
@@ -580,6 +614,20 @@ async def login(request: Request):
     status_code, resp = chamar_auth_service("/login", dados)
     return resp
 
+@app.post("/api/auth/logout")
+def logout_proxy(
+    request: Request,
+    usuario: dict = Depends(auth_guard.obter_usuario_atual)
+):
+    ip = extrair_ip(request)
+    registrar_log(
+        usuario_id=usuario.get("usuario_id"),
+        acao="logout",
+        ip=ip,
+        detalhes="Logout efetuado com sucesso"
+    )
+    return {"message": "Logout registrado com sucesso"}
+
 @app.post("/api/auth/forgot-password")
 async def forgot_password(request: Request):
     dados = await request.json()
@@ -626,6 +674,7 @@ def listar_favoritos(
 @app.post("/api/favoritos", status_code=status.HTTP_201_CREATED)
 def favoritar(
     dados: schemas.FavoritoCriar,
+    request: Request,
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
@@ -637,6 +686,16 @@ def favoritar(
     )
     db.add(novo_fav)
     db.commit()
+
+    # Log do evento de favoritar
+    ip = extrair_ip(request)
+    registrar_log(
+        usuario_id=usuario["usuario_id"],
+        acao="favoritar_filme",
+        ip=ip,
+        detalhes=f"Favoritou o filme '{dados.titulo}' (TMDB ID: {dados.tmdb_movie_id})"
+    )
+
     return {"message": "Favoritado com sucesso"}
 
 @app.delete("/api/favoritos/{favorito_id}")
@@ -681,6 +740,7 @@ def listar_comentarios(
 @app.post("/api/comentarios", status_code=status.HTTP_201_CREATED)
 def comentar(
     dados: schemas.ComentarioCriar,
+    request: Request,
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
@@ -691,13 +751,24 @@ def comentar(
     )
     db.add(novo_comentario)
     db.commit()
+
+    # Log do evento de comentar
+    ip = extrair_ip(request)
+    registrar_log(
+        usuario_id=usuario["usuario_id"],
+        acao="comentar",
+        ip=ip,
+        detalhes=f"Comentou no filme TMDB ID {dados.tmdb_movie_id}: {dados.texto[:40]}..."
+    )
+
     return {"message": "Comentário adicionado com sucesso"}
 
-# --- RBAC: ENDPOINT DE EXCLUSÃO DE COMENTÁRIO ---
+# --- RBAC: ENDPOINT DE EXCLUSÃO DE COMENTÁRIO COM AUDITORIA ---
 
 @app.delete("/api/comentarios/{comentario_id}")
 def deletar_comentario(
     comentario_id: int,
+    request: Request,
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
@@ -707,14 +778,70 @@ def deletar_comentario(
 
     papel = usuario.get("papel") or usuario.get("role")
     user_id = usuario.get("usuario_id")
+    ip = extrair_ip(request)
 
-    # Regra RBAC: se não for admin e não for o autor do comentário, bloqueia com 403
+    # Regra RBAC: se não for admin e não for o autor do comentário, LOGA O 403 e bloqueia
     if papel != "admin" and comentario.usuario_id != user_id:
+        registrar_log(
+            usuario_id=user_id,
+            acao="tentativa_negada_403",
+            ip=ip,
+            detalhes=f"Usuário tentou apagar o comentário {comentario_id} pertencente ao usuário {comentario.usuario_id}"
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acesso negado (403 Forbidden): apenas administradores podem apagar comentários de outros usuários."
         )
 
+    # Se for admin apagando comentário de outra pessoa, registra auditoria de moderação
+    if papel == "admin" and comentario.usuario_id != user_id:
+        registrar_log(
+            usuario_id=user_id,
+            acao="apagar_comentario_moderacao",
+            ip=ip,
+            detalhes=f"Admin moderou e apagou o comentário {comentario_id} do usuário {comentario.usuario_id}"
+        )
+
     db.delete(comentario)
     db.commit()
     return {"message": "Comentário removido com sucesso"}
+
+# --- ENDPOINT DE CONSULTA DE LOGS (EXCLUSIVO ADMIN) ---
+
+@app.get("/api/admin/logs")
+def consultar_logs_admin(
+    request: Request,
+    limit: int = Query(50, ge=1, le=200),
+    usuario: dict = Depends(auth_guard.obter_usuario_atual)
+):
+    papel = usuario.get("papel") or usuario.get("role")
+    user_id = usuario.get("usuario_id")
+    ip = extrair_ip(request)
+
+    # RBAC: Se usuário comum tentar consultar os logs de auditoria, retorna 403
+    if papel != "admin":
+        registrar_log(
+            usuario_id=user_id,
+            acao="tentativa_negada_403",
+            ip=ip,
+            detalhes="Tentativa não autorizada de consultar logs de auditoria"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso negado (403 Forbidden): apenas administradores podem acessar os logs de auditoria."
+        )
+
+    # Repassa o token recebido diretamente para o log_service na rede Docker interna
+    auth_header = request.headers.get("authorization") or f"Bearer {request.cookies.get('token', '')}"
+    try:
+        resp = requests.get(
+            f"{LOG_SERVICE_URL}/logs?limit={limit}",
+            headers={"Authorization": auth_header},
+            timeout=3.0
+        )
+        if resp.status_code != 200:
+            detalhe = resp.json().get("detail", "Erro retornado pelo serviço de logs")
+            raise HTTPException(status_code=resp.status_code, detail=detalhe)
+        return resp.json()
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Falha de comunicação com log_service: {str(e)}")
