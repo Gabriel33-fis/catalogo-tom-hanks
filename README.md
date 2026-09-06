@@ -14,8 +14,6 @@
 
 ---
 
----
-
 # 📊 Atividade 5: Auditoria com Redis Streams e RBAC
 
 ## 📌 Visão Geral da Arquitetura de Auditoria
@@ -24,6 +22,20 @@ Para monitoramento e segurança da aplicação, foi implementada uma camada ass�
 * **`log_service`**: Microsserviço responsável por receber eventos de auditoria e registrá-los em streams estruturados no Redis, além de disponibilizar a rota protegida de consulta para administradores.
 * **`tom_hanks_redis`**: Instância do Redis 7 atuando como message broker e armazenamento em memória via streams (`XADD`/`XRANGE`).
 * **Proteção por RBAC**: A rota `/api/admin/logs` exige obrigatoriamente a claim `papel: 'admin'` no token JWT. Usuários comuns são barrados com status **403 Forbidden**, e as tentativas de acesso indevido também são registradas no log.
+
+---
+
+## 📸 Evidências de Funcionamento (Atividade 5)
+
+### 1. Bloqueio de Usuário Comum acessando Logs de Auditoria (HTTP 403 Forbidden)
+Demonstração do RBAC bloqueando o acesso de usuário comum à rota restrita `/api/admin/logs`:
+
+![Erro 403 Forbidden Logs](prints/print_logs_403_usuario.png)
+
+### 2. Consulta de Auditoria realizada com sucesso por Administrador (Redis Streams)
+Visualização dos eventos capturados em tempo real (logins, favoritos, falhas de autenticação e tentativas negadas) através do payload de eventos do Redis Streams:
+
+![Auditoria Completa Redis Streams](prints/print_logs_200_admin.png)
 
 ---
 
@@ -102,9 +114,9 @@ services:
 networks:
   tom_hanks_net:
     driver: bridge
-```
 
 ---
+```
 
 # 🛡️ Atividade 4: Controle de Acesso Baseado em Papel (RBAC)
 
@@ -131,7 +143,7 @@ A autorização é aplicada estritamente no backend (`catalogo_service`), garant
 ### O que mudaria se fossemos para o PADRÃO A (Enforcement Centralizado)?
 * **Alterações no `auth_service`:** Seria necessário criar um endpoint centralizado de autorização (ex: `POST /api/auth/authorize` ou `POST /api/auth/can-perform`) que receberia o token/identificador do usuário e o recurso/ação solicitada (ex: `acao: "apagar:comentario-de-outro"`), consultando as tabelas de papéis e permissões no banco a cada requisição.
 * **Alterações no `catalogo_service`:** A rota `DELETE /api/comentarios/{comentario_id}` deixaria de inspecionar diretamente o payload decodificado e passaria a fazer uma requisição síncrona HTTP/gRPC para o `auth_service` perguntando se o usuário possui a permissão requerida antes de prosseguir com a exclusão.
-* **Trade-offs:**
+* **Trade-offs:** 
   * *Vantagem do Padrão A:* Mudanças de papéis ou revogações teriam efeito imediato.
   * *Desvantagem do Padrão A:* Cada ação sensível geraria round-trips extras na rede Docker interna, tornando o `auth_service` um ponto central de gargalo de performance e ponto único de falha (*Single Point of Failure*).
 
@@ -180,15 +192,13 @@ A aplicação monolítica original foi desacoplada em uma **Arquitetura de Micro
       │   catalogo_service    │  (FastAPI + UI + TMDB + MySQL)
       └───────────┬───────────┘
                   │  Rede interna: tom_hanks_net
-                  │  (Sem porta pública para o host)
+                  │  (Sem porta pública pro host)
                   ▼
       ┌───────────────────────┐
       │     auth_service      │  (FastAPI + JWT + Mailtrap + MySQL)
       └───────────────────────┘
-```
 
-```yaml
-version: '3.8'
+      version: '3.8'
 
 services:
   catalogo_service:
@@ -223,7 +233,7 @@ services:
       - DB_PASSWORD=********
       - DB_NAME=IAC_2026_02_gabriel_graciano
       - JWT_SECRET=********
-      - BASE_PUBLIC_URL=https://gabriel-graciano-isw055.lapps.studio
+      - BASE_PUBLIC_URL=[https://gabriel-graciano-isw055.lapps.studio](https://gabriel-graciano-isw055.lapps.studio)
       - MAILTRAP_HOST=sandbox.smtp.mailtrap.io
       - MAILTRAP_PORT=2525
       - MAILTRAP_USER=********
@@ -234,4 +244,3 @@ services:
 networks:
   tom_hanks_net:
     driver: bridge
-```
