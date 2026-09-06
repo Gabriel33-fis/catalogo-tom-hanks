@@ -14,6 +14,98 @@
 
 ---
 
+---
+
+# 📊 Atividade 5: Auditoria com Redis Streams e RBAC
+
+## 📌 Visão Geral da Arquitetura de Auditoria
+
+Para monitoramento e segurança da aplicação, foi implementada uma camada assíncrona de auditoria distribuída utilizando **Redis Streams** e um novo microsserviço dedicado:
+* **`log_service`**: Microsserviço responsável por receber eventos de auditoria e registrá-los em streams estruturados no Redis, além de disponibilizar a rota protegida de consulta para administradores.
+* **`tom_hanks_redis`**: Instância do Redis 7 atuando como message broker e armazenamento em memória via streams (`XADD`/`XRANGE`).
+* **Proteção por RBAC**: A rota `/api/admin/logs` exige obrigatoriamente a claim `papel: 'admin'` no token JWT. Usuários comuns são barrados com status **403 Forbidden**, e as tentativas de acesso indevido também são registradas no log.
+
+---
+
+## 🐳 Orquestração (`docker-compose.yml`)
+
+Trecho com a adição do serviço `log_service` e da instância `tom_hanks_redis`:
+
+```yaml
+version: '3.8'
+
+services:
+  catalogo_service:
+    build: ./catalogo_service
+    container_name: catalogo_service
+    restart: always
+    ports:
+      - "8207:8000"
+    environment:
+      - DB_HOST=35.226.64.52
+      - DB_PORT=3306
+      - DB_USER=IAC_2026_02_gabriel_graciano
+      - DB_PASSWORD=********
+      - DB_NAME=IAC_2026_02_gabriel_graciano
+      - TMDB_API_KEY=********
+      - JWT_SECRET=********
+      - AUTH_SERVICE_URL=http://auth_service:5000
+      - LOG_SERVICE_URL=http://log_service:6000
+    depends_on:
+      - auth_service
+      - log_service
+    networks:
+      - tom_hanks_net
+
+  auth_service:
+    build: ./auth_service
+    container_name: auth_service
+    restart: always
+    environment:
+      - DB_HOST=35.226.64.52
+      - DB_PORT=3306
+      - DB_USER=IAC_2026_02_gabriel_graciano
+      - DB_PASSWORD=********
+      - DB_NAME=IAC_2026_02_gabriel_graciano
+      - JWT_SECRET=********
+      - BASE_PUBLIC_URL=https://gabriel-graciano-isw055.lapps.studio
+      - MAILTRAP_HOST=sandbox.smtp.mailtrap.io
+      - MAILTRAP_PORT=2525
+      - MAILTRAP_USER=********
+      - MAILTRAP_PASS=********
+      - LOG_SERVICE_URL=http://log_service:6000
+    depends_on:
+      - log_service
+    networks:
+      - tom_hanks_net
+
+  log_service:
+    build: ./log_service
+    container_name: log_service
+    restart: always
+    environment:
+      - REDIS_HOST=tom_hanks_redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=********
+    depends_on:
+      - tom_hanks_redis
+    networks:
+      - tom_hanks_net
+
+  tom_hanks_redis:
+    image: redis:7-alpine
+    container_name: tom_hanks_redis
+    restart: always
+    networks:
+      - tom_hanks_net
+
+networks:
+  tom_hanks_net:
+    driver: bridge
+```
+
+---
+
 # 🛡️ Atividade 4: Controle de Acesso Baseado em Papel (RBAC)
 
 ## 🔐 1. Matriz de Permissões por Papel (RBAC)
@@ -39,7 +131,7 @@ A autorização é aplicada estritamente no backend (`catalogo_service`), garant
 ### O que mudaria se fossemos para o PADRÃO A (Enforcement Centralizado)?
 * **Alterações no `auth_service`:** Seria necessário criar um endpoint centralizado de autorização (ex: `POST /api/auth/authorize` ou `POST /api/auth/can-perform`) que receberia o token/identificador do usuário e o recurso/ação solicitada (ex: `acao: "apagar:comentario-de-outro"`), consultando as tabelas de papéis e permissões no banco a cada requisição.
 * **Alterações no `catalogo_service`:** A rota `DELETE /api/comentarios/{comentario_id}` deixaria de inspecionar diretamente o payload decodificado e passaria a fazer uma requisição síncrona HTTP/gRPC para o `auth_service` perguntando se o usuário possui a permissão requerida antes de prosseguir com a exclusão.
-* **Trade-offs:** 
+* **Trade-offs:**
   * *Vantagem do Padrão A:* Mudanças de papéis ou revogações teriam efeito imediato.
   * *Desvantagem do Padrão A:* Cada ação sensível geraria round-trips extras na rede Docker interna, tornando o `auth_service` um ponto central de gargalo de performance e ponto único de falha (*Single Point of Failure*).
 
@@ -88,13 +180,15 @@ A aplicação monolítica original foi desacoplada em uma **Arquitetura de Micro
       │   catalogo_service    │  (FastAPI + UI + TMDB + MySQL)
       └───────────┬───────────┘
                   │  Rede interna: tom_hanks_net
-                  │  (Sem porta pública pro host)
+                  │  (Sem porta pública para o host)
                   ▼
       ┌───────────────────────┐
       │     auth_service      │  (FastAPI + JWT + Mailtrap + MySQL)
       └───────────────────────┘
+```
 
-      version: '3.8'
+```yaml
+version: '3.8'
 
 services:
   catalogo_service:
@@ -129,7 +223,7 @@ services:
       - DB_PASSWORD=********
       - DB_NAME=IAC_2026_02_gabriel_graciano
       - JWT_SECRET=********
-      - BASE_PUBLIC_URL=[https://gabriel-graciano-isw055.lapps.studio](https://gabriel-graciano-isw055.lapps.studio)
+      - BASE_PUBLIC_URL=https://gabriel-graciano-isw055.lapps.studio
       - MAILTRAP_HOST=sandbox.smtp.mailtrap.io
       - MAILTRAP_PORT=2525
       - MAILTRAP_USER=********
@@ -140,3 +234,4 @@ services:
 networks:
   tom_hanks_net:
     driver: bridge
+```
