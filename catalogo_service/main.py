@@ -25,7 +25,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# --- SCHEMAS PYDANTIC (USA APENAS TIPOS NATIVOS: str, int, dict) ---
+# --- SCHEMAS PYDANTIC (TIPOS NATIVOS E EXEMPLOS VISUAIS) ---
 
 class LoginSchema(BaseModel):
     email: str
@@ -80,16 +80,61 @@ class ResetPasswordSchema(BaseModel):
 class MensagemResposta(BaseModel):
     message: str
 
-class ErroResposta(BaseModel):
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Operação realizada com sucesso."
+            }
+        }
+
+class Erro400Resposta(BaseModel):
     detail: str
 
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "detail": "Dados inválidos ou e-mail já cadastrado."
+            }
+        }
+
+class Erro401Resposta(BaseModel):
+    detail: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "detail": "Token de autenticação ausente ou inválido."
+            }
+        }
+
+class Erro403Resposta(BaseModel):
+    detail: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "detail": "Acesso negado (403 Forbidden): privilégios insuficientes."
+            }
+        }
+
+class Erro404Resposta(BaseModel):
+    detail: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "detail": "Recurso solicitado não foi encontrado."
+            }
+        }
+
+# Dicionários padrão para decorar as rotas no Swagger
 RESPOSTAS_ERRO_AUTH = {
-    401: {"model": ErroResposta, "description": "Token JWT ausente, inválido ou expirado."}
+    401: {"model": Erro401Resposta, "description": "Token JWT ausente, inválido ou expirado."}
 }
 
 RESPOSTAS_ERRO_RBAC = {
-    401: {"model": ErroResposta, "description": "Token JWT ausente ou inválido."},
-    403: {"model": ErroResposta, "description": "Acesso negado: privilégios insuficientes (requer papel 'admin')."}
+    401: {"model": Erro401Resposta, "description": "Token JWT ausente ou inválido."},
+    403: {"model": Erro403Resposta, "description": "Acesso negado: privilégios insuficientes (requer papel 'admin')."}
 }
 
 def extrair_ip(request: Request) -> str:
@@ -671,7 +716,7 @@ def index():
 def redefinir_senha_pagina():
     return HTMLResponse(content=HTML_PAGE)
 
-# --- PROXY AUTH (COM SCHEMAS COMPLETOS E CÓDIGOS DE ERRO) ---
+# --- PROXY AUTH COM SCHEMAS COMPLETOS E RESPOSTAS MAPEADAS ---
 
 @app.post(
     "/api/auth/register",
@@ -679,7 +724,7 @@ def redefinir_senha_pagina():
     summary="Registrar novo usuário",
     responses={
         201: {"model": MensagemResposta, "description": "Usuário registrado com sucesso."},
-        400: {"model": ErroResposta, "description": "E-mail já cadastrado ou dados inválidos."}
+        400: {"model": Erro400Resposta, "description": "E-mail já cadastrado ou dados inválidos."}
     }
 )
 async def register(dados: RegisterSchema):
@@ -692,7 +737,7 @@ async def register(dados: RegisterSchema):
     summary="Autenticar usuário e obter JWT",
     responses={
         200: {"description": "Login realizado com sucesso. Retorna access_token JWT e papel do usuário."},
-        401: {"model": ErroResposta, "description": "Credenciais incorretas (e-mail ou senha inválidos)."}
+        401: {"model": Erro401Resposta, "description": "Credenciais incorretas (e-mail ou senha inválidos)."}
     }
 )
 async def login(dados: LoginSchema):
@@ -724,7 +769,7 @@ def logout_proxy(
     summary="Solicitar redefinição de senha",
     responses={
         200: {"model": MensagemResposta, "description": "E-mail de recuperação despachado via SMTP (Mailtrap)."},
-        404: {"model": ErroResposta, "description": "E-mail não encontrado na base de dados."}
+        404: {"model": Erro404Resposta, "description": "E-mail não encontrado na base de dados."}
     }
 )
 async def forgot_password(dados: ForgotPasswordSchema):
@@ -737,7 +782,7 @@ async def forgot_password(dados: ForgotPasswordSchema):
     summary="Redefinir senha com token",
     responses={
         200: {"model": MensagemResposta, "description": "Senha alterada com sucesso."},
-        400: {"model": ErroResposta, "description": "Token inválido, expirado ou já utilizado."}
+        400: {"model": Erro400Resposta, "description": "Token inválido, expirado ou já utilizado."}
     }
 )
 async def reset_password(dados: ResetPasswordSchema):
@@ -823,8 +868,8 @@ def favoritar(
     summary="Remover filme dos favoritos",
     responses={
         **RESPOSTAS_ERRO_AUTH,
-        200: {"model": MensagemResposta},
-        404: {"model": ErroResposta, "description": "Favorito não encontrado."}
+        200: {"model": MensagemResposta, "description": "Favorito removido com sucesso."},
+        404: {"model": Erro404Resposta, "description": "Favorito não encontrado na base de dados."}
     }
 )
 def remover_favorito(
@@ -909,8 +954,8 @@ def comentar(
     summary="Excluir comentário (Autor ou Admin)",
     responses={
         **RESPOSTAS_ERRO_RBAC,
-        200: {"model": MensagemResposta},
-        404: {"model": ErroResposta, "description": "Comentário não encontrado."}
+        200: {"model": MensagemResposta, "description": "Comentário removido com sucesso."},
+        404: {"model": Erro404Resposta, "description": "Comentário não encontrado na base de dados."}
     }
 )
 def deletar_comentario(
