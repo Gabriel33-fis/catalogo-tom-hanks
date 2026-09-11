@@ -14,29 +14,51 @@
 
 ---
 
+#---
+
 # 📖 Atividade 6: Documentação de APIs com OpenAPI e Swagger
 
-## 📌 Visão Geral do Contrato da API
+## 📌 1. Contratos dos Microsserviços (Requisito 1)
 
-A documentação interativa e as especificações de contrato dos microsserviços foram implementadas com base no padrão **OpenAPI 3.1** utilizando a geração nativa provida pelo framework **FastAPI**, integrando interface interativa via **Swagger UI**.
+Foram documentados os contratos de interface de **2 microsserviços** da solução utilizando OpenAPI 3.1 e Swagger UI:
 
-* **Serviços Contemplados no Contrato (Requisito 1):**
-  * **`catalogo_service`:** Listagem de obras via API externa do TMDB, controle de persistência de filmes favoritos e submissão/moderação de comentários.
-  * **`auth_service` (Proxies & RBAC):** Fluxos completos de registro de usuários, autenticação JWT, recuperação de senha com tokens temporários (SMTP/Mailtrap) e auditoria de logout.
-  * **`log_service` (Admin):** Consulta administrativa de rastreabilidade e eventos de segurança no Redis Streams.
-* **Documentação de Endpoints e Tratamento de Erros (Requisito 2):**  
-  Todos os endpoints possuem tipagem estrita com schemas Pydantic e declaração explícita de códigos de retorno e erros esperados (`400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`).
-* **Acesso Público à Documentação (Requisito 3):**
-  * **Swagger UI Interativo:** [https://gabriel-graciano-isw055.lapps.studio/docs](https://gabriel-graciano-isw055.lapps.studio/docs)
-  * **Especificação OpenAPI:** Arquivo [`openapi.json`](./openapi.json) versionado no repositório e disponível via endpoint [`/openapi.json`](https://gabriel-graciano-isw055.lapps.studio/openapi.json).
+* **`catalogo_service`:** Gestão de acervo via TMDB, favoritos, postagem e moderação de comentários com RBAC.
+  * **Swagger UI Online:** [https://gabriel-graciano-isw055.lapps.studio/docs](https://gabriel-graciano-isw055.lapps.studio/docs)
+  * **Contrato OpenAPI JSON:** [`docs/openapi_catalogo.json`](./docs/openapi_catalogo.json)
+* **`auth_service`:** Cadastro, autenticação com emissão de tokens JWT assinados e recuperação de senhas via SMTP.
+  * **Contrato OpenAPI JSON:** [`docs/openapi_auth.json`](./docs/openapi_auth.json)
 
 ---
 
-## 📸 Evidência Prática (Requisito 4: Chamada Real via "Try it out")
+## 📋 2. Endpoints e Tratamento de Erros (Requisito 2)
 
-Execução com sucesso da rota de autenticação `POST /api/auth/login` diretamente pela interface web do Swagger UI, com envio de payload em JSON e resposta HTTP **200 OK** contendo os dados da sessão e o token JWT emitido pelo backend:
+Todos os endpoints possuem tipagem estrita com Pydantic, parâmetros definidos e mapeamento explícito de status codes de retorno e exemplos de erro:
 
-![Execução Swagger Try It Out](prints/print_swagger_login_200.png)
+| Método | Rota | Descrição | Sucesso | Erros Mapeados |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/api/auth/register` | Registro de novos usuários | `201 Created` | `400 Bad Request` |
+| `POST` | `/api/auth/login` | Login e emissão de JWT | `200 OK` | `401 Unauthorized` |
+| `POST` | `/api/auth/logout` | Encerramento de sessão com log | `200 OK` | `401 Unauthorized` |
+| `POST` | `/api/auth/forgot-password` | Disparo de recuperação via SMTP | `200 OK` | `404 Not Found` |
+| `POST` | `/api/auth/reset-password` | Alteração de senha com token | `200 OK` | `400 Bad Request` |
+| `GET` | `/api/filmes` | Consulta de filmes no TMDB | `200 OK` | `401 Unauthorized` |
+| `GET` | `/api/favoritos` | Listar favoritos do usuário logado | `200 OK` | `401 Unauthorized` |
+| `POST` | `/api/favoritos` | Salvar filme nos favoritos | `201 Created` | `401 Unauthorized` |
+| `DELETE` | `/api/favoritos/{id}` | Remover item dos favoritos | `200 OK` | `401 Unauthorized`, `404 Not Found` |
+| `GET` | `/api/comentarios/{tmdb_id}` | Listar comentários por filme | `200 OK` | `401 Unauthorized` |
+| `POST` | `/api/comentarios` | Publicar comentário | `201 Created` | `401 Unauthorized` |
+| `DELETE` | `/api/comentarios/{id}` | Exclusão com moderação RBAC | `200 OK` | `401 Unauthorized`, `403 Forbidden`, `404 Not Found` |
+| `GET` | `/api/admin/logs` | Consulta de logs (Redis Streams) | `200 OK` | `401 Unauthorized`, `403 Forbidden` |
+
+---
+
+## 📸 3. Evidências de Execução no Swagger (Requisito 4)
+
+### Chamada Real com Sucesso (`POST /api/auth/login` -> 200 OK)
+![Swagger Sucesso 200](prints/print_swagger_login_200.png)
+
+### Chamada Real com Erro Documentado (`POST /api/auth/login` -> 401 Unauthorized)
+![Swagger Erro 401](prints/print_swagger_erro_401.png)
 
 ---
 
