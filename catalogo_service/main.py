@@ -2,8 +2,11 @@ import os
 import json
 import urllib.request
 import urllib.error
+from typing import List, Optional
+from pydantic import BaseModel, EmailStr
 from fastapi import FastAPI, HTTPException, Depends, Request, status, Query
 from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from database import get_db, engine, Base
 import models
@@ -12,9 +15,91 @@ import auth_guard
 import requests  
 
 LOG_SERVICE_URL = os.getenv("LOG_SERVICE_URL", "http://log_service:6000")
+AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth_service:5000")
+TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
+
+Base.metadata.create_all(bind=engine)
+
+# Configuração OpenAPI Swagger com suporte a Bearer Token JWT
+app = FastAPI(
+    title="Catálogo Tom Hanks & Microsserviços",
+    description="Documentação oficial das APIs de Catálogo, Autenticação RBAC e Auditoria com Redis Streams.",
+    version="1.0.0"
+)
+
+security = HTTPBearer(auto_error=False)
+
+# --- SCHEMAS PYDANTIC PARA DOCUMENTAÇÃO NO SWAGGER ---
+
+class LoginSchema(BaseModel):
+    email: EmailStr
+    senha: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "email": "aluno@teste.com",
+                "senha": "123"
+            }
+        }
+
+class RegisterSchema(BaseModel):
+    nome: str
+    email: EmailStr
+    senha: str
+    papel: Optional[str] = "usuario"
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "nome": "Gabriel Graciano",
+                "email": "gabriel@teste.com",
+                "senha": "senhaSegura123",
+                "papel": "usuario"
+            }
+        }
+
+class ForgotPasswordSchema(BaseModel):
+    email: EmailStr
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "email": "usuario@teste.com"
+            }
+        }
+
+class ResetPasswordSchema(BaseModel):
+    token: str
+    nova_senha: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "token": "token-recebido-via-email-mailtrap",
+                "nova_senha": "novaSenhaSegura456"
+            }
+        }
+
+class MensagemResposta(BaseModel):
+    message: str
+
+class ErroResposta(BaseModel):
+    detail: str
+
+# Dicionários padrão de respostas HTTP para documentação OpenAPI
+RESPOSTAS_ERRO_AUTH = {
+    401: {"model": ErroResposta, "description": "Token JWT ausente, inválido ou expirado."}
+}
+
+RESPOSTAS_ERRO_RBAC = {
+    401: {"model": ErroResposta, "description": "Token JWT ausente ou inválido."},
+    403: {"model": ErroResposta, "description": "Acesso negado: privilégios insuficientes (requer papel 'admin')."}
+}
+
+# --- FUNÇÕES AUXILIARES ---
 
 def extrair_ip(request: Request) -> str:
-    """Extrai o IP real considerando proxies reversos ou direto do cliente."""
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -34,13 +119,6 @@ def registrar_log(usuario_id, acao, ip=None, detalhes=None):
         )
     except Exception as e:
         print(f"Aviso log_service: {e}")
-
-Base.metadata.create_all(bind=engine)
-
-app = FastAPI(title="Catálogo Tom Hanks")
-
-AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth_service:5000")
-TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 
 def chamar_auth_service(endpoint: str, payload: dict):
     url = f"{AUTH_SERVICE_URL}{endpoint}"
@@ -592,33 +670,57 @@ HTML_PAGE = """
 </html>
 """
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, tags=["Interface Web"])
 def index():
+    """Retorna a interface visual completa do Catálogo Tom Hanks (Single Page Application)."""
     return HTMLResponse(content=HTML_PAGE)
 
-@app.get("/redefinir-senha", response_class=HTMLResponse)
+@app.get("/redefinir-senha", response_class=HTMLResponse, tags=["Interface Web"])
 def redefinir_senha_pagina():
+    """Retorna a página para redefinição de senha com token recebido por e-mail."""
     return HTMLResponse(content=HTML_PAGE)
 
-# --- PROXY AUTH ---
+# --- PROXY AUTH (COM SCHEMAS COMPLETOS E CÓDIGOS DE ERRO) ---
 
-@app.post("/api/auth/register")
-async def register(request: Request):
-    dados = await request.json()
-    status_code, resp = chamar_auth_service("/register", dados)
+@app.post(
+    "/api/auth/register",
+    tags=["Autenticação"],
+    summary="Registrar novo usuário",
+    responses={
+        201: {"model": MensagemResposta, "description": "Usuário registrado com sucesso."},
+        400: {"model": ErroResposta, "description": "E-mail já cadastrado ou dados inválidos."}
+    }
+)
+async def register(dados: RegisterSchema):
+    """Encaminha o cadastro de novos usuários para o microsserviço auth_service."""
+    status_code, resp = chamar_auth_service("/register", dados.dict())
     return resp
 
-@app.post("/api/auth/login")
-async def login(request: Request):
-    dados = await request.json()
-    status_code, resp = chamar_auth_service("/login", dados)
+@app.post(
+    "/api/auth/login",
+    tags=["Autenticação"],
+    summary="Autenticar usuário e obter JWT",
+    responses={
+        200: {"description": "Login realizado com sucesso. Retorna access_token JWT e papel do usuário."},
+        401: {"model": ErroResposta, "description": "Credenciais incorretas (e-mail ou senha inválidos)."}
+    }
+)
+async def login(dados: LoginSchema):
+    """Realiza a autenticação junto ao auth_service e emite o token JWT com a claim de papel (RBAC)."""
+    status_code, resp = chamar_auth_service("/login", dados.dict())
     return resp
 
-@app.post("/api/auth/logout")
+@app.post(
+    "/api/auth/logout",
+    tags=["Autenticação"],
+    summary="Logout da sessão",
+    responses={**RESPOSTAS_ERRO_AUTH, 200: {"model": MensagemResposta}}
+)
 def logout_proxy(
     request: Request,
     usuario: dict = Depends(auth_guard.obter_usuario_atual)
 ):
+    """Encerra a sessão do usuário e grava evento de auditoria no Redis Streams."""
     ip = extrair_ip(request)
     registrar_log(
         usuario_id=usuario.get("usuario_id"),
@@ -628,22 +730,44 @@ def logout_proxy(
     )
     return {"message": "Logout registrado com sucesso"}
 
-@app.post("/api/auth/forgot-password")
-async def forgot_password(request: Request):
-    dados = await request.json()
-    status_code, resp = chamar_auth_service("/forgot-password", dados)
+@app.post(
+    "/api/auth/forgot-password",
+    tags=["Autenticação"],
+    summary="Solicitar redefinição de senha",
+    responses={
+        200: {"model": MensagemResposta, "description": "E-mail de recuperação despachado via SMTP (Mailtrap)."},
+        404: {"model": ErroResposta, "description": "E-mail não encontrado na base de dados."}
+    }
+)
+async def forgot_password(dados: ForgotPasswordSchema):
+    """Dispara o fluxo de recuperação de senha gerando token temporário e enviando por SMTP."""
+    status_code, resp = chamar_auth_service("/forgot-password", dados.dict())
     return resp
 
-@app.post("/api/auth/reset-password")
-async def reset_password(request: Request):
-    dados = await request.json()
-    status_code, resp = chamar_auth_service("/reset-password", dados)
+@app.post(
+    "/api/auth/reset-password",
+    tags=["Autenticação"],
+    summary="Redefinir senha com token",
+    responses={
+        200: {"model": MensagemResposta, "description": "Senha alterada com sucesso."},
+        400: {"model": ErroResposta, "description": "Token inválido, expirado ou já utilizado."}
+    }
+)
+async def reset_password(dados: ResetPasswordSchema):
+    """Atualiza a senha do usuário após validar o token de recuperação emitido via SMTP."""
+    status_code, resp = chamar_auth_service("/reset-password", dados.dict())
     return resp
 
 # --- ENDPOINTS DO CATÁLOGO ---
 
-@app.get("/api/filmes")
+@app.get(
+    "/api/filmes",
+    tags=["Catálogo"],
+    summary="Listar filmes de Tom Hanks (TMDB)",
+    responses={**RESPOSTAS_ERRO_AUTH, 200: {"description": "Lista dos 30 principais filmes consultados na API do TMDB."}}
+)
 def listar_filmes(usuario: dict = Depends(auth_guard.obter_usuario_atual)):
+    """Consulta os filmes do ator Tom Hanks na API pública do TMDB e retorna ordenado por data de lançamento."""
     url = f"https://api.themoviedb.org/3/person/31/movie_credits?api_key={TMDB_API_KEY}&language=pt-BR"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -654,11 +778,17 @@ def listar_filmes(usuario: dict = Depends(auth_guard.obter_usuario_atual)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao consultar TMDB: {str(e)}")
 
-@app.get("/api/favoritos")
+@app.get(
+    "/api/favoritos",
+    tags=["Favoritos"],
+    summary="Listar favoritos do usuário autenticado",
+    responses={**RESPOSTAS_ERRO_AUTH, 200: {"description": "Lista de filmes favoritados pelo usuário logado."}}
+)
 def listar_favoritos(
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
+    """Retorna os filmes salvos como favoritos pelo usuário autenticado atual."""
     favs = db.query(models.Favorito).filter(models.Favorito.usuario_id == usuario["usuario_id"]).order_by(models.Favorito.criado_em.desc()).all()
     return [
         {
@@ -671,13 +801,20 @@ def listar_favoritos(
         for f in favs
     ]
 
-@app.post("/api/favoritos", status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/api/favoritos",
+    status_code=status.HTTP_201_CREATED,
+    tags=["Favoritos"],
+    summary="Adicionar filme aos favoritos",
+    responses={**RESPOSTAS_ERRO_AUTH, 201: {"model": MensagemResposta}}
+)
 def favoritar(
     dados: schemas.FavoritoCriar,
     request: Request,
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
+    """Salva um filme na lista de favoritos e dispara evento assíncrono para o log_service."""
     novo_fav = models.Favorito(
         usuario_id=usuario["usuario_id"],
         tmdb_movie_id=dados.tmdb_movie_id,
@@ -687,7 +824,6 @@ def favoritar(
     db.add(novo_fav)
     db.commit()
 
-    # Log do evento de favoritar
     ip = extrair_ip(request)
     registrar_log(
         usuario_id=usuario["usuario_id"],
@@ -698,12 +834,22 @@ def favoritar(
 
     return {"message": "Favoritado com sucesso"}
 
-@app.delete("/api/favoritos/{favorito_id}")
+@app.delete(
+    "/api/favoritos/{favorito_id}",
+    tags=["Favoritos"],
+    summary="Remover filme dos favoritos",
+    responses={
+        **RESPOSTAS_ERRO_AUTH,
+        200: {"model": MensagemResposta},
+        404: {"model": ErroResposta, "description": "Favorito não encontrado."}
+    }
+)
 def remover_favorito(
     favorito_id: int,
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
+    """Remove um filme dos favoritos pertencente ao próprio usuário."""
     fav = db.query(models.Favorito).filter(
         models.Favorito.id == favorito_id,
         models.Favorito.usuario_id == usuario["usuario_id"]
@@ -714,12 +860,18 @@ def remover_favorito(
     db.commit()
     return {"message": "Favorito removido"}
 
-@app.get("/api/comentarios/{tmdb_movie_id}")
+@app.get(
+    "/api/comentarios/{tmdb_movie_id}",
+    tags=["Comentários"],
+    summary="Listar comentários de um filme",
+    responses={**RESPOSTAS_ERRO_AUTH, 200: {"description": "Lista de comentários do filme solicitado."}}
+)
 def listar_comentarios(
     tmdb_movie_id: int,
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
+    """Lista todos os comentários associados a um filme específico."""
     comentarios = db.query(models.Comentario).filter(models.Comentario.tmdb_movie_id == tmdb_movie_id).order_by(models.Comentario.criado_em.desc()).all()
     user_id = usuario.get("usuario_id")
     papel = usuario.get("papel") or usuario.get("role")
@@ -737,13 +889,20 @@ def listar_comentarios(
         for c in comentarios
     ]
 
-@app.post("/api/comentarios", status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/api/comentarios",
+    status_code=status.HTTP_201_CREATED,
+    tags=["Comentários"],
+    summary="Publicar comentário em um filme",
+    responses={**RESPOSTAS_ERRO_AUTH, 201: {"model": MensagemResposta}}
+)
 def comentar(
     dados: schemas.ComentarioCriar,
     request: Request,
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
+    """Registra um comentário no filme e grava log de auditoria no Redis Streams."""
     novo_comentario = models.Comentario(
         usuario_id=usuario["usuario_id"],
         tmdb_movie_id=dados.tmdb_movie_id,
@@ -752,7 +911,6 @@ def comentar(
     db.add(novo_comentario)
     db.commit()
 
-    # Log do evento de comentar
     ip = extrair_ip(request)
     registrar_log(
         usuario_id=usuario["usuario_id"],
@@ -765,13 +923,27 @@ def comentar(
 
 # --- RBAC: ENDPOINT DE EXCLUSÃO DE COMENTÁRIO COM AUDITORIA ---
 
-@app.delete("/api/comentarios/{comentario_id}")
+@app.delete(
+    "/api/comentarios/{comentario_id}",
+    tags=["Comentários"],
+    summary="Excluir comentário (Autor ou Admin)",
+    responses={
+        **RESPOSTAS_ERRO_RBAC,
+        200: {"model": MensagemResposta},
+        404: {"model": ErroResposta, "description": "Comentário não encontrado."}
+    }
+)
 def deletar_comentario(
     comentario_id: int,
     request: Request,
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
+    """
+    Exclui comentário validando RBAC no backend:
+    - Usuário comum: só apaga comentários próprios (se tentar apagar de outro, retorna 403 Forbidden).
+    - Administrador: possui privilégio de moderação sobre qualquer comentário.
+    """
     comentario = db.query(models.Comentario).filter(models.Comentario.id == comentario_id).first()
     if not comentario:
         raise HTTPException(status_code=404, detail="Comentário não encontrado")
@@ -780,7 +952,6 @@ def deletar_comentario(
     user_id = usuario.get("usuario_id")
     ip = extrair_ip(request)
 
-    # Regra RBAC: se não for admin e não for o autor do comentário, LOGA O 403 e bloqueia
     if papel != "admin" and comentario.usuario_id != user_id:
         registrar_log(
             usuario_id=user_id,
@@ -793,7 +964,6 @@ def deletar_comentario(
             detail="Acesso negado (403 Forbidden): apenas administradores podem apagar comentários de outros usuários."
         )
 
-    # Se for admin apagando comentário de outra pessoa, registra auditoria de moderação
     if papel == "admin" and comentario.usuario_id != user_id:
         registrar_log(
             usuario_id=user_id,
@@ -808,17 +978,28 @@ def deletar_comentario(
 
 # --- ENDPOINT DE CONSULTA DE LOGS (EXCLUSIVO ADMIN) ---
 
-@app.get("/api/admin/logs")
+@app.get(
+    "/api/admin/logs",
+    tags=["Auditoria (Admin)"],
+    summary="Consultar logs de auditoria do Redis Streams (Exclusivo Admin)",
+    responses={
+        **RESPOSTAS_ERRO_RBAC,
+        200: {"description": "Lista de eventos de auditoria recuperados cronologicamente do Redis Streams."}
+    }
+)
 def consultar_logs_admin(
     request: Request,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=200, description="Quantidade máxima de eventos a retornar"),
     usuario: dict = Depends(auth_guard.obter_usuario_atual)
 ):
+    """
+    Consulta os logs de auditoria armazenados no Redis Streams.
+    Acesso restrito a administradores via claim 'papel: admin' no JWT. Tentativas negadas retornam 403.
+    """
     papel = usuario.get("papel") or usuario.get("role")
     user_id = usuario.get("usuario_id")
     ip = extrair_ip(request)
 
-    # RBAC: Se usuário comum tentar consultar os logs de auditoria, retorna 403
     if papel != "admin":
         registrar_log(
             usuario_id=user_id,
@@ -831,7 +1012,6 @@ def consultar_logs_admin(
             detail="Acesso negado (403 Forbidden): apenas administradores podem acessar os logs de auditoria."
         )
 
-    # Repassa o token recebido diretamente para o log_service na rede Docker interna
     auth_header = request.headers.get("authorization") or f"Bearer {request.cookies.get('token', '')}"
     try:
         resp = requests.get(
