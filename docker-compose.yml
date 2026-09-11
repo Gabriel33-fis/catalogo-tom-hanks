@@ -2,19 +2,19 @@ version: '3.8'
 
 services:
   catalogo_service:
-    build: ./catalogo_service
+    image: ghcr.io/gabriel33-fis/catalogo-tom-hanks/catalogo_service:sha-4f78d24
     container_name: catalogo_service
     restart: always
     ports:
       - "8207:8000"
     environment:
-      - DB_HOST=35.226.64.52
-      - DB_PORT=3306
-      - DB_USER=IAC_2026_02_gabriel_graciano
-      - DB_PASSWORD=********
-      - DB_NAME=IAC_2026_02_gabriel_graciano
-      - TMDB_API_KEY=********
-      - JWT_SECRET=********
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
       - AUTH_SERVICE_URL=http://auth_service:5000
       - LOG_SERVICE_URL=http://log_service:6000
     depends_on:
@@ -28,17 +28,17 @@ services:
     container_name: auth_service
     restart: always
     environment:
-      - DB_HOST=35.226.64.52
-      - DB_PORT=3306
-      - DB_USER=IAC_2026_02_gabriel_graciano
-      - DB_PASSWORD=********
-      - DB_NAME=IAC_2026_02_gabriel_graciano
-      - JWT_SECRET=********
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - JWT_SECRET=${JWT_SECRET}
       - BASE_PUBLIC_URL=https://gabriel-graciano-isw055.lapps.studio
       - MAILTRAP_HOST=sandbox.smtp.mailtrap.io
       - MAILTRAP_PORT=2525
-      - MAILTRAP_USER=********
-      - MAILTRAP_PASS=********
+      - MAILTRAP_USER=${MAILTRAP_USER}
+      - MAILTRAP_PASS=${MAILTRAP_PASS}
       - LOG_SERVICE_URL=http://log_service:6000
     depends_on:
       - log_service
@@ -59,7 +59,7 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - JWT_SECRET=********
+      - JWT_SECRET=${JWT_SECRET}
     depends_on:
       - redis
     networks:
