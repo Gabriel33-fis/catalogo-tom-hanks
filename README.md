@@ -14,9 +14,38 @@
 
 ---
 
-#---
+---
 
-# 📖 Atividade 6: Documentação de APIs com OpenAPI e Swagger
+# 🚀 Atividade Extra [2]: CI/CD com GitHub Actions e Deploy Automatizado
+
+## 📌 1. Arquitetura da Pipeline (Requisitos 1, 2, 3 e 4)
+
+A esteira de integração e entrega contínua foi configurada via workflow do GitHub Actions (`.github/workflows/deploy.yml`):
+
+* **CI (Continuous Integration - Requisito 1):** A cada `push` na branch `main`, o runner configura o ambiente Python, instala as dependências e executa a suíte de testes com `pytest` (`catalogo_service/test_main.py`). Se algum teste falhar, o build é interrompido antes do deploy.
+* **CD com Tag Rastreável (Requisito 2):** Após a aprovação dos testes, a imagem Docker do serviço é gerada e publicada no GitHub Container Registry (`ghcr.io`) etiquetada com a tag `latest` e com a tag imutável do commit (`sha-4f78d24`).
+* **Gestão Segura de Credenciais (Requisito 3):** A esteira utiliza o token nativo efêmero `${{ secrets.GITHUB_TOKEN }}` para login no GHCR sem credenciais expostas no YAML. As variáveis de aplicação permanecem isoladas no ambiente de execução.
+* **Deploy no Portainer (Requisito 4):** A stack de microsserviços consome a imagem versionada diretamente do registry através da imagem `ghcr.io/gabriel33-fis/catalogo-tom-hanks/catalogo_service:sha-4f78d24`.
+
+---
+
+## 🔗 2. Execução da Pipeline no GitHub Actions (Requisito 5)
+
+* **Execução com Status Verde:** [https://github.com/Gabriel33-fis/catalogo-tom-hanks/actions/runs/34658129659](https://github.com/Gabriel33-fis/catalogo-tom-hanks/actions)
+
+![Pipeline Actions com Sucesso](prints/print_actions_sucesso.png)
+
+---
+
+## 📸 3. Evidência do Container Rodando com a Tag do Commit (Requisito 5)
+
+Painel do Portainer comprovando a execução do container `catalogo_service` utilizando a imagem com a tag rastreável do commit (`sha-4f78d24`):
+
+![Container Rodando Tag do Commit](prints/print_container_tag_commit.png)
+
+---
+
+# 📖 Atividade Extra [1]: Documentação de APIs com OpenAPI e Swagger
 
 ## 📌 1. Contratos dos Microsserviços (Requisito 1)
 
