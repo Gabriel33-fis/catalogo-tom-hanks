@@ -3,10 +3,9 @@ import json
 import urllib.request
 import urllib.error
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, Depends, Request, status, Query
 from fastapi.responses import HTMLResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from database import get_db, engine, Base
 import models
@@ -20,19 +19,16 @@ TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 
 Base.metadata.create_all(bind=engine)
 
-# Configuração OpenAPI Swagger com suporte a Bearer Token JWT
 app = FastAPI(
     title="Catálogo Tom Hanks & Microsserviços",
     description="Documentação oficial das APIs de Catálogo, Autenticação RBAC e Auditoria com Redis Streams.",
     version="1.0.0"
 )
 
-security = HTTPBearer(auto_error=False)
-
-# --- SCHEMAS PYDANTIC PARA DOCUMENTAÇÃO NO SWAGGER ---
+# --- SCHEMAS PYDANTIC (USA APENAS TIPOS NATIVOS: str, int, dict) ---
 
 class LoginSchema(BaseModel):
-    email: EmailStr
+    email: str
     senha: str
 
     class Config:
@@ -45,7 +41,7 @@ class LoginSchema(BaseModel):
 
 class RegisterSchema(BaseModel):
     nome: str
-    email: EmailStr
+    email: str
     senha: str
     papel: Optional[str] = "usuario"
 
@@ -60,7 +56,7 @@ class RegisterSchema(BaseModel):
         }
 
 class ForgotPasswordSchema(BaseModel):
-    email: EmailStr
+    email: str
 
     class Config:
         json_schema_extra = {
@@ -87,7 +83,6 @@ class MensagemResposta(BaseModel):
 class ErroResposta(BaseModel):
     detail: str
 
-# Dicionários padrão de respostas HTTP para documentação OpenAPI
 RESPOSTAS_ERRO_AUTH = {
     401: {"model": ErroResposta, "description": "Token JWT ausente, inválido ou expirado."}
 }
@@ -96,8 +91,6 @@ RESPOSTAS_ERRO_RBAC = {
     401: {"model": ErroResposta, "description": "Token JWT ausente ou inválido."},
     403: {"model": ErroResposta, "description": "Acesso negado: privilégios insuficientes (requer papel 'admin')."}
 }
-
-# --- FUNÇÕES AUXILIARES ---
 
 def extrair_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for")
@@ -672,12 +665,10 @@ HTML_PAGE = """
 
 @app.get("/", response_class=HTMLResponse, tags=["Interface Web"])
 def index():
-    """Retorna a interface visual completa do Catálogo Tom Hanks (Single Page Application)."""
     return HTMLResponse(content=HTML_PAGE)
 
 @app.get("/redefinir-senha", response_class=HTMLResponse, tags=["Interface Web"])
 def redefinir_senha_pagina():
-    """Retorna a página para redefinição de senha com token recebido por e-mail."""
     return HTMLResponse(content=HTML_PAGE)
 
 # --- PROXY AUTH (COM SCHEMAS COMPLETOS E CÓDIGOS DE ERRO) ---
@@ -692,7 +683,6 @@ def redefinir_senha_pagina():
     }
 )
 async def register(dados: RegisterSchema):
-    """Encaminha o cadastro de novos usuários para o microsserviço auth_service."""
     status_code, resp = chamar_auth_service("/register", dados.dict())
     return resp
 
@@ -706,7 +696,6 @@ async def register(dados: RegisterSchema):
     }
 )
 async def login(dados: LoginSchema):
-    """Realiza a autenticação junto ao auth_service e emite o token JWT com a claim de papel (RBAC)."""
     status_code, resp = chamar_auth_service("/login", dados.dict())
     return resp
 
@@ -720,7 +709,6 @@ def logout_proxy(
     request: Request,
     usuario: dict = Depends(auth_guard.obter_usuario_atual)
 ):
-    """Encerra a sessão do usuário e grava evento de auditoria no Redis Streams."""
     ip = extrair_ip(request)
     registrar_log(
         usuario_id=usuario.get("usuario_id"),
@@ -740,7 +728,6 @@ def logout_proxy(
     }
 )
 async def forgot_password(dados: ForgotPasswordSchema):
-    """Dispara o fluxo de recuperação de senha gerando token temporário e enviando por SMTP."""
     status_code, resp = chamar_auth_service("/forgot-password", dados.dict())
     return resp
 
@@ -754,7 +741,6 @@ async def forgot_password(dados: ForgotPasswordSchema):
     }
 )
 async def reset_password(dados: ResetPasswordSchema):
-    """Atualiza a senha do usuário após validar o token de recuperação emitido via SMTP."""
     status_code, resp = chamar_auth_service("/reset-password", dados.dict())
     return resp
 
@@ -767,7 +753,6 @@ async def reset_password(dados: ResetPasswordSchema):
     responses={**RESPOSTAS_ERRO_AUTH, 200: {"description": "Lista dos 30 principais filmes consultados na API do TMDB."}}
 )
 def listar_filmes(usuario: dict = Depends(auth_guard.obter_usuario_atual)):
-    """Consulta os filmes do ator Tom Hanks na API pública do TMDB e retorna ordenado por data de lançamento."""
     url = f"https://api.themoviedb.org/3/person/31/movie_credits?api_key={TMDB_API_KEY}&language=pt-BR"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -788,7 +773,6 @@ def listar_favoritos(
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
-    """Retorna os filmes salvos como favoritos pelo usuário autenticado atual."""
     favs = db.query(models.Favorito).filter(models.Favorito.usuario_id == usuario["usuario_id"]).order_by(models.Favorito.criado_em.desc()).all()
     return [
         {
@@ -814,7 +798,6 @@ def favoritar(
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
-    """Salva um filme na lista de favoritos e dispara evento assíncrono para o log_service."""
     novo_fav = models.Favorito(
         usuario_id=usuario["usuario_id"],
         tmdb_movie_id=dados.tmdb_movie_id,
@@ -849,7 +832,6 @@ def remover_favorito(
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
-    """Remove um filme dos favoritos pertencente ao próprio usuário."""
     fav = db.query(models.Favorito).filter(
         models.Favorito.id == favorito_id,
         models.Favorito.usuario_id == usuario["usuario_id"]
@@ -871,7 +853,6 @@ def listar_comentarios(
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
-    """Lista todos os comentários associados a um filme específico."""
     comentarios = db.query(models.Comentario).filter(models.Comentario.tmdb_movie_id == tmdb_movie_id).order_by(models.Comentario.criado_em.desc()).all()
     user_id = usuario.get("usuario_id")
     papel = usuario.get("papel") or usuario.get("role")
@@ -902,7 +883,6 @@ def comentar(
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
-    """Registra um comentário no filme e grava log de auditoria no Redis Streams."""
     novo_comentario = models.Comentario(
         usuario_id=usuario["usuario_id"],
         tmdb_movie_id=dados.tmdb_movie_id,
@@ -921,7 +901,7 @@ def comentar(
 
     return {"message": "Comentário adicionado com sucesso"}
 
-# --- RBAC: ENDPOINT DE EXCLUSÃO DE COMENTÁRIO COM AUDITORIA ---
+# --- RBAC: EXCLUSÃO DE COMENTÁRIO COM AUDITORIA ---
 
 @app.delete(
     "/api/comentarios/{comentario_id}",
@@ -939,11 +919,6 @@ def deletar_comentario(
     usuario: dict = Depends(auth_guard.obter_usuario_atual),
     db: Session = Depends(get_db)
 ):
-    """
-    Exclui comentário validando RBAC no backend:
-    - Usuário comum: só apaga comentários próprios (se tentar apagar de outro, retorna 403 Forbidden).
-    - Administrador: possui privilégio de moderação sobre qualquer comentário.
-    """
     comentario = db.query(models.Comentario).filter(models.Comentario.id == comentario_id).first()
     if not comentario:
         raise HTTPException(status_code=404, detail="Comentário não encontrado")
@@ -976,7 +951,7 @@ def deletar_comentario(
     db.commit()
     return {"message": "Comentário removido com sucesso"}
 
-# --- ENDPOINT DE CONSULTA DE LOGS (EXCLUSIVO ADMIN) ---
+# --- AUDITORIA REDIS STREAMS ---
 
 @app.get(
     "/api/admin/logs",
@@ -992,10 +967,6 @@ def consultar_logs_admin(
     limit: int = Query(50, ge=1, le=200, description="Quantidade máxima de eventos a retornar"),
     usuario: dict = Depends(auth_guard.obter_usuario_atual)
 ):
-    """
-    Consulta os logs de auditoria armazenados no Redis Streams.
-    Acesso restrito a administradores via claim 'papel: admin' no JWT. Tentativas negadas retornam 403.
-    """
     papel = usuario.get("papel") or usuario.get("role")
     user_id = usuario.get("usuario_id")
     ip = extrair_ip(request)
