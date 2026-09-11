@@ -45,6 +45,14 @@ Painel do Portainer comprovando a execução do container `catalogo_service` uti
 
 ---
 
+### 🔐 Gestão de Segredos e Variáveis de Ambiente (Requisito 3)
+
+Em conformidade com as diretrizes de segurança:
+* **Esteira de CI/CD (GitHub Actions):** Nenhuma credencial privada reside no arquivo `.github/workflows/deploy.yml`. A autenticação com o GHCR ocorre por meio do token temporário `${{ secrets.GITHUB_TOKEN }}` fornecido pelo próprio GitHub em tempo de execução.
+* **Ambiente de Produção (Portainer):** Todas as credenciais sensíveis (`DB_PASSWORD`, `JWT_SECRET`, `TMDB_API_KEY` e credenciais SMTP) foram desacopladas do repositório através de sintaxe de interpolação (`${VARIAVEL}`). Os valores reais são preenchidos exclusivamente nas variáveis de ambiente da Stack no Portainer (`.env`), garantindo isolamento total do código-fonte público.
+
+---
+
 # 📖 Atividade Extra [1]: Documentação de APIs com OpenAPI e Swagger
 
 ## 📌 1. Contratos dos Microsserviços (Requisito 1)

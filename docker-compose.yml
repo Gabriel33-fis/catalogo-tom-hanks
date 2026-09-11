@@ -5,6 +5,8 @@ services:
     image: ghcr.io/gabriel33-fis/catalogo-tom-hanks/catalogo_service:sha-4f78d24
     container_name: catalogo_service
     restart: always
+    catalogo_service:
+    image: ghcr.io/gabriel33-fis/catalogo-tom-hanks/catalogo_service:sha-<hsha-4f78d24>
     ports:
       - "8207:8000"
     environment:
