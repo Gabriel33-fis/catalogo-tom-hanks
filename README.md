@@ -14,6 +14,32 @@
 
 ---
 
+# 📖 Atividade 6: Documentação de APIs com OpenAPI e Swagger
+
+## 📌 Visão Geral do Contrato da API
+
+A documentação interativa e as especificações de contrato dos microsserviços foram implementadas com base no padrão **OpenAPI 3.1** utilizando a geração nativa provida pelo framework **FastAPI**, integrando interface interativa via **Swagger UI**.
+
+* **Serviços Contemplados no Contrato (Requisito 1):**
+  * **`catalogo_service`:** Listagem de obras via API externa do TMDB, controle de persistência de filmes favoritos e submissão/moderação de comentários.
+  * **`auth_service` (Proxies & RBAC):** Fluxos completos de registro de usuários, autenticação JWT, recuperação de senha com tokens temporários (SMTP/Mailtrap) e auditoria de logout.
+  * **`log_service` (Admin):** Consulta administrativa de rastreabilidade e eventos de segurança no Redis Streams.
+* **Documentação de Endpoints e Tratamento de Erros (Requisito 2):**  
+  Todos os endpoints possuem tipagem estrita com schemas Pydantic e declaração explícita de códigos de retorno e erros esperados (`400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`).
+* **Acesso Público à Documentação (Requisito 3):**
+  * **Swagger UI Interativo:** [https://gabriel-graciano-isw055.lapps.studio/docs](https://gabriel-graciano-isw055.lapps.studio/docs)
+  * **Especificação OpenAPI:** Arquivo [`openapi.json`](./openapi.json) versionado no repositório e disponível via endpoint [`/openapi.json`](https://gabriel-graciano-isw055.lapps.studio/openapi.json).
+
+---
+
+## 📸 Evidência Prática (Requisito 4: Chamada Real via "Try it out")
+
+Execução com sucesso da rota de autenticação `POST /api/auth/login` diretamente pela interface web do Swagger UI, com envio de payload em JSON e resposta HTTP **200 OK** contendo os dados da sessão e o token JWT emitido pelo backend:
+
+![Execução Swagger Try It Out](prints/print_swagger_login_200.png)
+
+---
+
 # 📊 Atividade 5: Auditoria com Redis Streams e RBAC
 
 ## 📌 Visão Geral da Arquitetura de Auditoria
