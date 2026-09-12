@@ -298,9 +298,10 @@ A aplicação monolítica original foi desacoplada em uma **Arquitetura de Micro
 ### 3. Bloqueio de Segurança com Token Inválido/Expirado
 ![Bloqueio Token Inválido](https://raw.githubusercontent.com/Gabriel33-fis/catalogo-tom-hanks/main/prints/print_3_token_invalido.png)
 
+
 ## 🏗️ Diagrama e Rede Docker
 
-\```text
+```text
        [ Usuário / Navegador ]
                   │
                   ▼ Porta 8207 (Host)
@@ -313,8 +314,10 @@ A aplicação monolítica original foi desacoplada em uma **Arquitetura de Micro
       ┌───────────────────────┐
       │     auth_service      │  (FastAPI + JWT + Mailtrap + MySQL)
       └───────────────────────┘
+```
 
-      version: '3.8'
+```yaml
+version: '3.8'
 
 services:
   catalogo_service:
@@ -349,7 +352,7 @@ services:
       - DB_PASSWORD=********
       - DB_NAME=IAC_2026_02_gabriel_graciano
       - JWT_SECRET=********
-      - BASE_PUBLIC_URL=[https://gabriel-graciano-isw055.lapps.studio](https://gabriel-graciano-isw055.lapps.studio)
+      - BASE_PUBLIC_URL=https://gabriel-graciano-isw055.lapps.studio
       - MAILTRAP_HOST=sandbox.smtp.mailtrap.io
       - MAILTRAP_PORT=2525
       - MAILTRAP_USER=********
@@ -359,7 +362,8 @@ services:
 
 networks:
   tom_hanks_net:
-    driver: bridge\```
+    driver: bridge
+```
 
 # 🎬 Atividade 2: Catálogo de Filmes — Tom Hanks
 
