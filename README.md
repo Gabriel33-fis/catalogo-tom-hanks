@@ -16,17 +16,41 @@
 
 ---
 
-# 🚀 Atividade Extra [2]: CI/CD com GitHub Actions e Deploy Automatizado
+# 📌 1. Arquitetura da Pipeline (Requisitos 1, 2 e 4)
 
-## 📌 1. Arquitetura da Pipeline (Requisitos 1, 2, 3 e 4)
+A esteira de integração e entrega contínua foi configurada via workflow automatizado do GitHub Actions ([`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml)):
 
-A esteira de integração e entrega contínua foi configurada via workflow do GitHub Actions (`.github/workflows/deploy.yml`):
+* **CI (Continuous Integration - Requisito 1):** A cada evento de `push` na branch `main`, o runner provisiona o ambiente Python 3.11, instala as dependências e executa os testes automatizados com `pytest` ([`catalogo_service/test_main.py`](./catalogo_service/test_main.py)). Se qualquer teste quebrar, a esteira é abortada antes do build.
+* **CD com Tag Rastreável (Requisito 2):** Com a validação dos testes, a imagem Docker é compilada e publicada no GitHub Container Registry (`ghcr.io`) etiquetada com a tag `latest` e com a tag imutável amarrada ao hash do commit: `sha-4f78d24`.
+* **Deploy no Portainer (Requisito 4):** A stack de microsserviços consome a imagem oficial diretamente do registry via `ghcr.io/gabriel33-fis/catalogo-tom-hanks/catalogo_service:sha-4f78d24`, eliminando a necessidade de builds manuais locais no servidor.
 
-* **CI (Continuous Integration - Requisito 1):** A cada `push` na branch `main`, o runner configura o ambiente Python, instala as dependências e executa a suíte de testes com `pytest` (`catalogo_service/test_main.py`). Se algum teste falhar, o build é interrompido antes do deploy.
-* **CD com Tag Rastreável (Requisito 2):** Após a aprovação dos testes, a imagem Docker do serviço é gerada e publicada no GitHub Container Registry (`ghcr.io`) etiquetada com a tag `latest` e com a tag imutável do commit (`sha-4f78d24`).
-* **Gestão Segura de Credenciais (Requisito 3):** A esteira utiliza o token nativo efêmero `${{ secrets.GITHUB_TOKEN }}` para login no GHCR sem credenciais expostas no YAML. As variáveis de aplicação permanecem isoladas no ambiente de execução.
-* **Deploy no Portainer (Requisito 4):** A stack de microsserviços consome a imagem versionada diretamente do registry através da imagem `ghcr.io/gabriel33-fis/catalogo-tom-hanks/catalogo_service:sha-4f78d24`.
+---
 
+## 🔐 2. Gestão de Segredos e Isolamento de Credenciais (Requisito 3)
+
+Em conformidade rigorosa com a regra de nunca expor credenciais em código versionado:
+
+* **No Workflow de CI/CD:** Nenhuma senha, token ou chave de API está hardcoded no arquivo YAML. A autenticação com o GHCR é realizada através do token efêmero nativo `${{ secrets.GITHUB_TOKEN }}`, injetado de forma segura em tempo de execução.
+* **No `docker-compose.yml`:** Todas as credenciais sensíveis (`DB_PASSWORD`, `JWT_SECRET`, `TMDB_API_KEY`, `MAILTRAP_USER`, `MAILTRAP_PASS`) utilizam interpolação por variáveis de ambiente (`${VARIAVEL}`).
+* **No Ambiente de Produção (Portainer):** Os valores reais são injetados diretamente pelo painel de *Environment variables* da Stack no Portainer (ou arquivo `.env`), mantendo o repositório público totalmente protegido.
+* **Modelo de Configuração:** Disponibilizado o template seguro [`/.env.example`](./.env.example) para reprodução do ambiente sem vazamento de segredos.
+
+---
+
+## 🔗 3. Execução da Pipeline no GitHub Actions (Requisito 5)
+
+* **Status da Execução:** Aprovado (Verde)  
+* **Link Direto do Workflow Run:** [Visualizar Execução no GitHub Actions](https://github.com/Gabriel33-fis/catalogo-tom-hanks/actions/runs/34658129659)
+
+![Pipeline Actions com Sucesso](prints/print_actions_sucesso.png)
+
+---
+
+## 📸 4. Evidência do Container Rodando com a Tag do Commit (Requisito 5)
+
+Registro do painel do Portainer evidenciando o container `catalogo_service` em execução com a imagem rastreável amarrada ao commit (`sha-4f78d24`), e não a `latest`:
+
+![Container Rodando Tag do Commit](prints/print_container_tag_commit.png)
 ---
 
 ## 🔗 2. Execução da Pipeline no GitHub Actions (Requisito 5)
