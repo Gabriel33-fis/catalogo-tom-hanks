@@ -14,6 +14,36 @@
 
 ---
 
+---
+
+## 📊 Atividade Extra [3] — Observabilidade: Health Checks e Métricas
+
+Implementação dos pilares de observabilidade e resiliência para a arquitetura de microsserviços sob orientação do professor [siriani](https://github.com/siriani).
+
+### 1. Readiness Probes Reais (`/health`)
+Cada serviço implementa checagens ativas das suas dependências em tempo de execução:
+- **`catalogo_service` & `auth_service`**: executam verificação de conectividade com a base de dados (`SELECT 1`). Retornam HTTP `200` se saudável e HTTP `503 Service Unavailable` em caso de indisponibilidade do banco.
+- **`log_service`**: executa `r.ping()` diretamente na instância do **Redis**. Em caso de falha de conexão, retorna HTTP `503 Service Unavailable`.
+
+### 2. Docker Healthchecks Integrados
+Configurados no `docker-compose.yml` com intervalo de 10 segundos, timeout de 5 segundos e tolerância a falhas. O status dos containers é gerenciado automaticamente pelo daemon do Docker.
+
+#### Evidência 1: Todos os serviços com status `healthy`
+![Todos Saudáveis](prints/print_health_all_healthy.png)
+
+#### Evidência 2: Detecção automática de indisponibilidade (Redis offline)
+Ao derrubar o container do Redis (`tom_hanks_redis`), o `log_service` falhou na checagem do readiness probe e transitou de forma autônoma para o estado **`unhealthy`**, sem necessidade de intervenção externa.
+
+![Log Service Unhealthy](prints/print_health_log_unhealthy.png)
+
+### 3. Exposição de Métricas Prometheus (`/metrics`)
+Instrumentação realizada através de `prometheus-fastapi-instrumentator`, expondo contadores de requisições por rota, latência (P95) e códigos HTTP.
+
+#### Evidência 3: Endpoint `/metrics` ativo
+![Métricas Prometheus](prints/print_prometheus_metrics.png)
+
+---
+
 # 🚀 Atividade Extra [2]: CI/CD com GitHub Actions e Deploy Automatizado
 
 ## 📌 1. Arquitetura da Pipeline (Requisitos 1, 2 e 4)
