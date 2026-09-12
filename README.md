@@ -14,10 +14,6 @@
 
 ---
 
----
-
----
-
 # 🚀 Atividade Extra [2]: CI/CD com GitHub Actions e Deploy Automatizado
 
 ## 📌 1. Arquitetura da Pipeline (Requisitos 1, 2 e 4)
