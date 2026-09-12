@@ -300,7 +300,7 @@ A aplicação monolítica original foi desacoplada em uma **Arquitetura de Micro
 
 ## 🏗️ Diagrama e Rede Docker
 
-```text
+\```text
        [ Usuário / Navegador ]
                   │
                   ▼ Porta 8207 (Host)
@@ -359,4 +359,62 @@ services:
 
 networks:
   tom_hanks_net:
-    driver: bridge
+    driver: bridge\```
+
+# 🎬 Atividade 2: Catálogo de Filmes — Tom Hanks
+
+Aplicação web desenvolvida para a disciplina **Introdução à Computação em Nuvem (ISW055)**, sob orientação do professor [@siriani](https://github.com/siriani).
+
+O projeto consiste em um sistema de microsserviços conteinerizados que consome a API do TMDB em tempo real, fornecendo controle de acesso individualizado, persistência relacional com segregação estrita por usuário, automação de deploy e observabilidade.
+
+---
+
+## 🌐 Endereço da Aplicação
+
+* **URL Pública:** [https://gabriel-graciano-isw055.lapps.studio](https://gabriel-graciano-isw055.lapps.studio)
+* **Porta Reservada:** `8207`
+
+---
+
+## 🧱 Arquitetura e Camadas da Aplicação
+
+### 1. Consumo de API Externa — TMDB
+* A listagem de obras cinematográficas é consumida ao vivo da API pública do TMDB (`person_id = 31` para Tom Hanks).
+* A aplicação **não** persiste sinopses, títulos ou metadados gerais do catálogo no banco de dados.
+* As imagens de divulgação são referenciadas diretamente pelo caminho oficial fornecido pela CDN do TMDB (`https://image.tmdb.org/t/p/w500/...`), sem download local.
+
+### 2. Persistência de Dados & Modelo Relacional
+* Dados de usuários, listas de favoritos e interações em comentários são armazenados em tabelas relacionais (`usuarios`, `favoritos`, `comentarios`).
+* **Segregação Estrita:** Cada consulta e manipulação de favoritos e comentários é autenticada e filtrada obrigatoriamente pelo identificador do usuário (`WHERE usuario_id = :id`), impossibilitando que um usuário visualize, altere ou exclua registros particulares de terceiros.
+
+### 3. Segurança e Gestão de Credenciais
+* **Segurança no Lado do Servidor:** Nenhuma credencial privada (chave da TMDB, segredos JWT ou acessos a banco) reside no código-fonte, nos arquivos do repositório público ou em scripts acessíveis no frontend.
+* **Variáveis de Ambiente:** Todas as credenciais são injetadas exclusivamente em tempo de execução via `docker-compose.yml` no Portainer. O repositório contém apenas o arquivo `.env.example` com os nomes de variáveis de referência.
+
+---
+
+## 🔄 Cenário de Uso Testado (Ponta a Ponta)
+
+1. **Acesso Restrito Inicial:** Ao acessar a aplicação via navegador, o catálogo permanece oculto até que o usuário realize login ou cadastro.
+2. **Autenticação e Listagem:** Após a validação das credenciais via token JWT, a tela principal carrega os filmes de Tom Hanks com pôsteres e informações vindas da API externa.
+3. **Favoritos e Comentários:** O usuário autenticado marca filmes como favoritos e submete comentários, persistindo esses dados na base.
+4. **Isolamento de Contas:** Ao deslogar e entrar com uma conta distinta, os favoritos e comentários do primeiro usuário não são exibidos, comprovando a segregação por conta.
+
+---
+
+## 📸 Evidências de Funcionamento
+
+### Tela de Autenticação (Acesso Inicial)
+![Tela de Login](prints/print_tela_login.png)
+
+### Catálogo de Filmes (Consumo ao Vivo do TMDB)
+![Catalogo TMDB](prints/print_catalogo_tmdb.png)
+
+---
+
+## 🛠️ Execução Local
+
+1. Clone o repositório:
+   ```bash
+   git clone [https://github.com/Gabriel33-fis/catalogo-tom-hanks.git](https://github.com/Gabriel33-fis/catalogo-tom-hanks.git)
+   cd catalogo-tom-hanks
