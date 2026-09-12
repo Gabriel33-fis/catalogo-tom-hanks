@@ -1,18 +1,23 @@
 import os
 from datetime import datetime, timezone
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Request, Header
+from fastapi import FastAPI, HTTPException, Request, Header, Response, status
 from pydantic import BaseModel
 import redis
 import jwt
+from prometheus_fastapi_instrumentator import Instrumentator
 
 app = FastAPI(title="Log Service")
+
+# Instrumentação Prometheus para expor métricas na rota /metrics (Requisito 3)
+Instrumentator().instrument(app).expose(app)
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 JWT_SECRET = os.getenv("JWT_SECRET", "sua_chave_secreta_jwt")
 
-r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+# Conexão com timeout curto para checagens de health check não travarem
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True, socket_connect_timeout=2)
 STREAM_KEY = "audit_logs"
 
 class LogEntry(BaseModel):
@@ -20,6 +25,32 @@ class LogEntry(BaseModel):
     acao: str
     ip_origem: Optional[str] = None
     detalhes: Optional[str] = None
+
+@app.get("/health")
+def health_check(response: Response):
+    """
+    Readiness probe real: testa dependência crítica (Redis).
+    Retorna 200 se saudável, 503 se o Redis estiver inacessível (Requisito 1).
+    """
+    try:
+        r.ping()
+        return {
+            "status": "healthy",
+            "service": "log_service",
+            "dependencies": {
+                "redis": "up"
+            }
+        }
+    except Exception as exc:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return {
+            "status": "unhealthy",
+            "service": "log_service",
+            "dependencies": {
+                "redis": "down"
+            },
+            "error": str(exc)
+        }
 
 @app.post("/logs")
 def registrar_log(entry: LogEntry):
@@ -32,13 +63,11 @@ def registrar_log(entry: LogEntry):
         "detalhes": entry.detalhes or ""
     }
     
-    # Requisito 4: Persistência usando Redis Streams (XADD)
     msg_id = r.xadd(STREAM_KEY, log_data)
     return {"status": "ok", "id": msg_id}
 
 @app.get("/logs")
 def consultar_logs(limit: int = 50, authorization: Optional[str] = Header(None)):
-    # Validação do papel admin (Requisito 5)
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token ausente ou inválido")
     
@@ -51,7 +80,6 @@ def consultar_logs(limit: int = 50, authorization: Optional[str] = Header(None))
     if payload.get("papel") != "admin":
         raise HTTPException(status_code=403, detail="Acesso restrito a administradores")
 
-    # Lê os últimos N logs ordenados do mais recente para o mais antigo
     logs_raw = r.xrevrange(STREAM_KEY, max="+", min="-", count=limit)
     
     resultado = []

@@ -4,19 +4,61 @@ import urllib.request
 import urllib.error
 from typing import List, Optional
 from pydantic import BaseModel
-from fastapi import FastAPI, HTTPException, Depends, Request, status, Query
+from fastapi import FastAPI, HTTPException, Depends, Request, Response, status, Query
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from database import get_db, engine, Base
 import models
 import schemas
 import auth_guard
 import requests  
+from prometheus_fastapi_instrumentator import Instrumentator
 
 LOG_SERVICE_URL = os.getenv("LOG_SERVICE_URL", "http://log_service:6000")
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth_service:5000")
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"Aviso ao inicializar tabelas catalogo: {e}")
+
+app = FastAPI(
+    title="Catálogo Tom Hanks & Microsserviços",
+    description="Documentação oficial das APIs de Catálogo, Autenticação RBAC e Auditoria com Redis Streams.",
+    version="1.0.0"
+)
+
+# Instrumentação Prometheus para expor métricas na rota /metrics (Requisito 3)
+Instrumentator().instrument(app).expose(app)
+
+@app.get("/health", tags=["Observabilidade"])
+def health_check(response: Response, db: Session = Depends(get_db)):
+    """
+    Readiness probe real: valida conexão com o banco de dados (Requisito 1).
+    Retorna 200 se saudável, 503 se o banco estiver indisponível.
+    """
+    try:
+        db.execute(text("SELECT 1"))
+        return {
+            "status": "healthy",
+            "service": "catalogo_service",
+            "dependencies": {
+                "database": "up"
+            }
+        }
+    except Exception as exc:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return {
+            "status": "unhealthy",
+            "service": "catalogo_service",
+            "dependencies": {
+                "database": "down"
+            },
+            "error": str(exc)
+        }
+    
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
