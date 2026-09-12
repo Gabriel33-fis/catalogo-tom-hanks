@@ -58,16 +58,8 @@ def health_check(response: Response, db: Session = Depends(get_db)):
             },
             "error": str(exc)
         }
-    
-Base.metadata.create_all(bind=engine)
 
-app = FastAPI(
-    title="Catálogo Tom Hanks & Microsserviços",
-    description="Documentação oficial das APIs de Catálogo, Autenticação RBAC e Auditoria com Redis Streams.",
-    version="1.0.0"
-)
-
-# --- SCHEMAS PYDANTIC (TIPOS NATIVOS E EXEMPLOS VISUAIS) ---
+# --- SCHEMAS PYDANTIC ---
 
 class LoginSchema(BaseModel):
     email: str
@@ -169,7 +161,6 @@ class Erro404Resposta(BaseModel):
             }
         }
 
-# Dicionários padrão para decorar as rotas no Swagger
 RESPOSTAS_ERRO_AUTH = {
     401: {"model": Erro401Resposta, "description": "Token JWT ausente, inválido ou expirado."}
 }
@@ -988,8 +979,6 @@ def comentar(
 
     return {"message": "Comentário adicionado com sucesso"}
 
-# --- RBAC: EXCLUSÃO DE COMENTÁRIO COM AUDITORIA ---
-
 @app.delete(
     "/api/comentarios/{comentario_id}",
     tags=["Comentários"],
@@ -1037,8 +1026,6 @@ def deletar_comentario(
     db.delete(comentario)
     db.commit()
     return {"message": "Comentário removido com sucesso"}
-
-# --- AUDITORIA REDIS STREAMS ---
 
 @app.get(
     "/api/admin/logs",
