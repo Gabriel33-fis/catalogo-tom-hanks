@@ -16,7 +16,11 @@
 
 ---
 
-# 📌 1. Arquitetura da Pipeline (Requisitos 1, 2 e 4)
+---
+
+# 🚀 Atividade Extra [2]: CI/CD com GitHub Actions e Deploy Automatizado
+
+## 📌 1. Arquitetura da Pipeline (Requisitos 1, 2 e 4)
 
 A esteira de integração e entrega contínua foi configurada via workflow automatizado do GitHub Actions ([`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml)):
 
@@ -51,29 +55,6 @@ Em conformidade rigorosa com a regra de nunca expor credenciais em código versi
 Registro do painel do Portainer evidenciando o container `catalogo_service` em execução com a imagem rastreável amarrada ao commit (`sha-4f78d24`), e não a `latest`:
 
 ![Container Rodando Tag do Commit](prints/print_container_tag_commit.png)
----
-
-## 🔗 2. Execução da Pipeline no GitHub Actions (Requisito 5)
-
-* **Execução com Status Verde:** [https://github.com/Gabriel33-fis/catalogo-tom-hanks/actions/runs/34658129659](https://github.com/Gabriel33-fis/catalogo-tom-hanks/actions)
-
-![Pipeline Actions com Sucesso](prints/print_actions_sucesso.png)
-
----
-
-## 📸 3. Evidência do Container Rodando com a Tag do Commit (Requisito 5)
-
-Painel do Portainer comprovando a execução do container `catalogo_service` utilizando a imagem com a tag rastreável do commit (`sha-4f78d24`):
-
-![Container Rodando Tag do Commit](prints/print_container_tag_commit.png)
-
----
-
-### 🔐 Gestão de Segredos e Variáveis de Ambiente (Requisito 3)
-
-Em conformidade com as diretrizes de segurança:
-* **Esteira de CI/CD (GitHub Actions):** Nenhuma credencial privada reside no arquivo `.github/workflows/deploy.yml`. A autenticação com o GHCR ocorre por meio do token temporário `${{ secrets.GITHUB_TOKEN }}` fornecido pelo próprio GitHub em tempo de execução.
-* **Ambiente de Produção (Portainer):** Todas as credenciais sensíveis (`DB_PASSWORD`, `JWT_SECRET`, `TMDB_API_KEY` e credenciais SMTP) foram desacopladas do repositório através de sintaxe de interpolação (`${VARIAVEL}`). Os valores reais são preenchidos exclusivamente nas variáveis de ambiente da Stack no Portainer (`.env`), garantindo isolamento total do código-fonte público.
 
 ---
 
