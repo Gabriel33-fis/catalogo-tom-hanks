@@ -20,3 +20,12 @@ class Comentario(Base):
     tmdb_movie_id = Column(Integer, nullable=False)
     texto = Column(Text, nullable=False)
     criado_em = Column(DateTime(timezone=True), server_default=func.now())
+
+class Perfil(Base):
+    __tablename__ = "perfis"
+
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, unique=True, nullable=False, index=True)
+    bio = Column(Text, nullable=True, default="")
+    foto_key = Column(String(255), nullable=True, default=None)
+    atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

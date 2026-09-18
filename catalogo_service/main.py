@@ -4,8 +4,8 @@ import urllib.request
 import urllib.error
 from typing import List, Optional
 from pydantic import BaseModel
-from fastapi import FastAPI, HTTPException, Depends, Request, Response, status, Query
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Depends, Request, Response, status, Query, File, UploadFile
+from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from database import get_db, engine, Base
@@ -14,6 +14,7 @@ import schemas
 import auth_guard
 import requests  
 from prometheus_fastapi_instrumentator import Instrumentator
+import storage
 
 LOG_SERVICE_URL = os.getenv("LOG_SERVICE_URL", "http://log_service:6000")
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth_service:5000")
@@ -24,19 +25,22 @@ try:
 except Exception as e:
     print(f"Aviso ao inicializar tabelas catalogo: {e}")
 
+# Garante a existência do bucket dedicado no MinIO durante a inicialização
+storage.assegurar_bucket()
+
 app = FastAPI(
     title="Catálogo Tom Hanks & Microsserviços",
-    description="Documentação oficial das APIs de Catálogo, Autenticação RBAC e Auditoria com Redis Streams.",
+    description="Documentação oficial das APIs de Catálogo, Autenticação RBAC, Armazenamento de Objetos (MinIO) e Auditoria.",
     version="1.0.0"
 )
 
-# Instrumentação Prometheus para expor métricas na rota /metrics (Requisito 3)
+# Instrumentação Prometheus para expor métricas na rota /metrics
 Instrumentator().instrument(app).expose(app)
 
 @app.get("/health", tags=["Observabilidade"])
 def health_check(response: Response, db: Session = Depends(get_db)):
     """
-    Readiness probe real: valida conexão com o banco de dados (Requisito 1).
+    Readiness probe real: valida conexão com o banco de dados.
     Retorna 200 se saudável, 503 se o banco estiver indisponível.
     """
     try:
@@ -111,55 +115,23 @@ class ResetPasswordSchema(BaseModel):
             }
         }
 
+class PerfilUpdateSchema(BaseModel):
+    bio: Optional[str] = ""
+
 class MensagemResposta(BaseModel):
     message: str
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "message": "Operação realizada com sucesso."
-            }
-        }
 
 class Erro400Resposta(BaseModel):
     detail: str
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "detail": "Dados inválidos ou e-mail já cadastrado."
-            }
-        }
-
 class Erro401Resposta(BaseModel):
     detail: str
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "detail": "Token de autenticação ausente ou inválido."
-            }
-        }
 
 class Erro403Resposta(BaseModel):
     detail: str
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "detail": "Acesso negado (403 Forbidden): privilégios insuficientes."
-            }
-        }
-
 class Erro404Resposta(BaseModel):
     detail: str
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "detail": "Recurso solicitado não foi encontrado."
-            }
-        }
 
 RESPOSTAS_ERRO_AUTH = {
     401: {"model": Erro401Resposta, "description": "Token JWT ausente, inválido ou expirado."}
@@ -167,7 +139,7 @@ RESPOSTAS_ERRO_AUTH = {
 
 RESPOSTAS_ERRO_RBAC = {
     401: {"model": Erro401Resposta, "description": "Token JWT ausente ou inválido."},
-    403: {"model": Erro403Resposta, "description": "Acesso negado: privilégios insuficientes (requer papel 'admin')."}
+    403: {"model": Erro403Resposta, "description": "Acesso negado: privilégios insuficientes."}
 }
 
 def extrair_ip(request: Request) -> str:
@@ -265,6 +237,17 @@ HTML_PAGE = """
         .btn-com { background: #0284c7; color: #fff; }
         .btn-com:hover { background: #0369a1; }
         
+        /* ESTILOS DE PERFIL (ATIVIDADE 6) */
+        .profile-container { background: #1f1f1f; border-radius: 8px; padding: 30px; margin-top: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .profile-header { display: flex; gap: 30px; align-items: center; border-bottom: 1px solid #333; padding-bottom: 25px; flex-wrap: wrap; }
+        .avatar-box { width: 140px; height: 140px; border-radius: 50%; overflow: hidden; border: 3px solid #e50914; background: #2a2a2a; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .avatar-box img { width: 100%; height: 100%; object-fit: cover; }
+        .profile-meta { flex: 1; min-width: 250px; }
+        .profile-meta h2 { font-size: 1.8rem; margin-bottom: 5px; }
+        .profile-meta p.role-badge { color: #ffb703; font-weight: bold; font-size: 0.9rem; margin-bottom: 12px; }
+        .profile-form { margin-top: 20px; }
+        .file-upload-area { margin-top: 15px; padding: 15px; background: #2a2a2a; border-radius: 6px; border: 1px dashed #555; }
+
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); display: flex; justify-content: center; align-items: center; z-index: 1000; }
         .modal-content { background: #1f1f1f; padding: 25px; border-radius: 8px; width: 90%; max-width: 550px; max-height: 85vh; display: flex; flex-direction: column; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
@@ -285,6 +268,7 @@ HTML_PAGE = """
             <div id="nav-tabs" class="nav-links hidden">
                 <a id="tab-cat" class="nav-link active" onclick="mostrarAba('catalogo')">Catálogo</a>
                 <a id="tab-fav" class="nav-link" onclick="mostrarAba('favoritos')">Meus Favoritos</a>
+                <a id="tab-perfil" class="nav-link" onclick="mostrarAba('perfil')">Meu Perfil</a>
             </div>
         </div>
         <div class="user-panel">
@@ -379,6 +363,42 @@ HTML_PAGE = """
             <h2>Meus Filmes Favoritos ⭐</h2>
             <div id="fav-movies-container" class="movies-grid"></div>
         </div>
+
+        <!-- ABA MEU PERFIL (ATIVIDADE 6) -->
+        <div id="box-perfil" class="hidden">
+            <div class="profile-container">
+                <div class="profile-header">
+                    <div class="avatar-box">
+                        <img id="profile-avatar" src="https://via.placeholder.com/140x140?text=Foto" alt="Foto de Perfil">
+                    </div>
+                    <div class="profile-meta">
+                        <h2 id="profile-name">Nome do Usuário</h2>
+                        <p class="role-badge" id="profile-role">Papel: Usuário</p>
+                        <p id="profile-bio-text" style="color: #ccc; font-style: italic;">Nenhuma biografia adicionada.</p>
+                    </div>
+                </div>
+
+                <div class="profile-form">
+                    <div class="form-group">
+                        <label>Editar Biografia:</label>
+                        <textarea id="edit-bio-input" rows="3" placeholder="Conte sobre você ou seus filmes favoritos..."></textarea>
+                    </div>
+                    <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="salvarBio()">Salvar Biografia</button>
+
+                    <div class="file-upload-area">
+                        <label>Atualizar Foto de Perfil (Envio direto para MinIO Storage):</label>
+                        <p style="color: #888; font-size: 0.8rem; margin-bottom: 8px;">Formatos aceitos: JPG, PNG, WEBP (Máx. 2MB)</p>
+                        <input type="file" id="foto-input" accept="image/png, image/jpeg, image/webp" style="margin-bottom: 10px;">
+                        <button class="btn-primary" style="width: auto; padding: 10px 20px; background: #0284c7;" onclick="enviarFotoPerfil()">Fazer Upload de Foto</button>
+                    </div>
+                </div>
+
+                <div style="margin-top: 35px;">
+                    <h3>Filmes no Meu Perfil ⭐</h3>
+                    <div id="profile-favs-container" class="movies-grid"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- MODAL DE COMENTÁRIOS -->
@@ -400,9 +420,10 @@ HTML_PAGE = """
 
     <script>
         let filmeAtualComentario = null;
+        let usuarioIdAtual = null;
 
         function alternarTela(id) {
-            ['box-login', 'box-register', 'box-forgot', 'box-reset', 'box-catalogo', 'box-favoritos'].forEach(b => {
+            ['box-login', 'box-register', 'box-forgot', 'box-reset', 'box-catalogo', 'box-favoritos', 'box-perfil'].forEach(b => {
                 const el = document.getElementById(b);
                 if (el) el.classList.add('hidden');
             });
@@ -410,16 +431,23 @@ HTML_PAGE = """
         }
 
         function mostrarAba(aba) {
+            ['tab-cat', 'tab-fav', 'tab-perfil'].forEach(t => {
+                const el = document.getElementById(t);
+                if (el) el.classList.remove('active');
+            });
+
             if (aba === 'catalogo') {
                 document.getElementById('tab-cat').classList.add('active');
-                document.getElementById('tab-fav').classList.remove('active');
                 alternarTela('box-catalogo');
                 carregarFilmes();
             } else if (aba === 'favoritos') {
                 document.getElementById('tab-fav').classList.add('active');
-                document.getElementById('tab-cat').classList.remove('active');
                 alternarTela('box-favoritos');
                 carregarFavoritos();
+            } else if (aba === 'perfil') {
+                document.getElementById('tab-perfil').classList.add('active');
+                alternarTela('box-perfil');
+                carregarMeuPerfil();
             }
         }
 
@@ -496,6 +524,106 @@ HTML_PAGE = """
                 });
             } catch (err) {
                 container.innerHTML = `<p style="color:#ef5350;">Erro: ${err.message}</p>`;
+            }
+        }
+
+        /* FUNÇÕES DE PERFIL E OBJECT STORAGE (ATIVIDADE 6) */
+        async function carregarMeuPerfil() {
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch('/api/perfil/me', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error('Falha ao obter perfil');
+                const data = await res.json();
+
+                usuarioIdAtual = data.usuario_id;
+                document.getElementById('profile-name').innerText = data.nome;
+                document.getElementById('profile-role').innerText = `ID: #${data.usuario_id} | Papel: ${localStorage.getItem('papel') || 'usuario'}`;
+                document.getElementById('profile-bio-text').innerText = data.bio || 'Nenhuma biografia adicionada.';
+                document.getElementById('edit-bio-input').value = data.bio || '';
+
+                const avatarImg = document.getElementById('profile-avatar');
+                if (data.foto_url) {
+                    avatarImg.src = data.foto_url + '?t=' + new Date().getTime();
+                } else {
+                    avatarImg.src = 'https://via.placeholder.com/140x140?text=Sem+Foto';
+                }
+
+                // Renderiza favoritos no perfil
+                const favsContainer = document.getElementById('profile-favs-container');
+                favsContainer.innerHTML = '';
+                if (!data.favoritos || data.favoritos.length === 0) {
+                    favsContainer.innerHTML = '<p style="color: #888;">Nenhum favorito cadastrado.</p>';
+                } else {
+                    data.favoritos.forEach(f => {
+                        const card = document.createElement('div');
+                        card.className = 'movie-card';
+                        card.innerHTML = `
+                            <img src="${f.poster_path ? 'https://image.tmdb.org/t/p/w500' + f.poster_path : 'https://via.placeholder.com/300x450?text=Sem+Poster'}" alt="${f.titulo}">
+                            <div class="movie-info">
+                                <div class="movie-title">${f.titulo}</div>
+                            </div>
+                        `;
+                        favsContainer.appendChild(card);
+                    });
+                }
+            } catch (e) {
+                alert('Erro ao carregar perfil: ' + e.message);
+            }
+        }
+
+        async function salvarBio() {
+            const token = localStorage.getItem('token');
+            const bio = document.getElementById('edit-bio-input').value;
+            try {
+                const res = await fetch(`/api/perfil/${usuarioIdAtual}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ bio })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Erro ao atualizar biografia');
+                alert('Biografia atualizada com sucesso!');
+                carregarMeuPerfil();
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
+        async function enviarFotoPerfil() {
+            const fileInput = document.getElementById('foto-input');
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('Por favor, selecione uma imagem antes de enviar.');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            if (file.size > 2 * 1024 * 1024) {
+                alert('A imagem excede o tamanho máximo de 2MB!');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch(`/api/perfil/${usuarioIdAtual}/foto`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Erro ao enviar foto');
+                alert('Upload concluído com sucesso no MinIO Storage!');
+                fileInput.value = '';
+                carregarMeuPerfil();
+            } catch (e) {
+                alert(e.message);
             }
         }
 
@@ -821,6 +949,147 @@ async def forgot_password(dados: ForgotPasswordSchema):
 async def reset_password(dados: ResetPasswordSchema):
     status_code, resp = chamar_auth_service("/reset-password", dados.dict())
     return resp
+
+# --- ENDPOINTS DO PERFIL E STORAGE MINIO (ATIVIDADE 6) ---
+
+@app.get(
+    "/api/perfil/me",
+    tags=["Perfil & Armazenamento"],
+    summary="Obter perfil do usuário logado",
+    responses={**RESPOSTAS_ERRO_AUTH, 200: {"description": "Retorna o perfil completo, bio, foto e filmes favoritados."}}
+)
+def obter_meu_perfil(
+    usuario: dict = Depends(auth_guard.obter_usuario_atual),
+    db: Session = Depends(get_db)
+):
+    uid = usuario["usuario_id"]
+    perfil = db.query(models.Perfil).filter(models.Perfil.usuario_id == uid).first()
+    if not perfil:
+        perfil = models.Perfil(usuario_id=uid, bio="")
+        db.add(perfil)
+        db.commit()
+        db.refresh(perfil)
+
+    favs = db.query(models.Favorito).filter(models.Favorito.usuario_id == uid).order_by(models.Favorito.criado_em.desc()).all()
+    lista_favs = [
+        {"id": f.id, "tmdb_movie_id": f.tmdb_movie_id, "titulo": f.titulo, "poster_path": f.poster_path}
+        for f in favs
+    ]
+
+    foto_url = storage.obter_url_foto(perfil.foto_key) if perfil.foto_key else None
+
+    return {
+        "usuario_id": uid,
+        "nome": usuario.get("nome", f"Usuário #{uid}"),
+        "bio": perfil.bio or "",
+        "foto_url": foto_url,
+        "favoritos": lista_favs
+    }
+
+@app.put(
+    "/api/perfil/{target_usuario_id}",
+    tags=["Perfil & Armazenamento"],
+    summary="Atualizar biografia do usuário",
+    responses={**RESPOSTAS_ERRO_RBAC, 200: {"model": MensagemResposta}}
+)
+def atualizar_perfil(
+    target_usuario_id: int,
+    dados: PerfilUpdateSchema,
+    request: Request,
+    usuario: dict = Depends(auth_guard.obter_usuario_atual),
+    db: Session = Depends(get_db)
+):
+    # Regra: cada usuário só pode editar o próprio perfil (Requisito 4)
+    if usuario["usuario_id"] != target_usuario_id:
+        ip = extrair_ip(request)
+        registrar_log(
+            usuario_id=usuario["usuario_id"],
+            acao="tentativa_negada_403_perfil",
+            ip=ip,
+            detalhes=f"Tentativa não autorizada de editar o perfil {target_usuario_id}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso negado: não é permitido editar o perfil de outro usuário."
+        )
+
+    perfil = db.query(models.Perfil).filter(models.Perfil.usuario_id == target_usuario_id).first()
+    if not perfil:
+        perfil = models.Perfil(usuario_id=target_usuario_id, bio=dados.bio)
+        db.add(perfil)
+    else:
+        perfil.bio = dados.bio
+    db.commit()
+
+    return {"message": "Biografia atualizada com sucesso"}
+
+@app.post(
+    "/api/perfil/{target_usuario_id}/foto",
+    tags=["Perfil & Armazenamento"],
+    summary="Upload de foto de perfil para o MinIO",
+    responses={**RESPOSTAS_ERRO_RBAC, 200: {"description": "Foto enviada ao MinIO e referência salva no banco."}}
+)
+def upload_foto_perfil(
+    target_usuario_id: int,
+    request: Request,
+    file: UploadFile = File(...),
+    usuario: dict = Depends(auth_guard.obter_usuario_atual),
+    db: Session = Depends(get_db)
+):
+    # Proteção: cada usuário só altera a própria foto (Requisito 4)
+    if usuario["usuario_id"] != target_usuario_id:
+        ip = extrair_ip(request)
+        registrar_log(
+            usuario_id=usuario["usuario_id"],
+            acao="tentativa_negada_403_foto",
+            ip=ip,
+            detalhes=f"Tentativa de upload de foto no perfil {target_usuario_id}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso negado: não é permitido alterar a foto de outro usuário."
+        )
+
+    # Validação e upload para o bucket MinIO
+    foto_key = storage.validar_e_enviar_foto(target_usuario_id, file)
+
+    # Persiste apenas a chave/referência no SQLite
+    perfil = db.query(models.Perfil).filter(models.Perfil.usuario_id == target_usuario_id).first()
+    if not perfil:
+        perfil = models.Perfil(usuario_id=target_usuario_id, foto_key=foto_key)
+        db.add(perfil)
+    else:
+        perfil.foto_key = foto_key
+    db.commit()
+
+    ip = extrair_ip(request)
+    registrar_log(
+        usuario_id=usuario["usuario_id"],
+        acao="upload_foto_perfil",
+        ip=ip,
+        detalhes=f"Upload de foto de perfil no storage MinIO com a chave: {foto_key}"
+    )
+
+    return {
+        "message": "Foto de perfil atualizada com sucesso.",
+        "foto_key": foto_key,
+        "foto_url": storage.obter_url_foto(foto_key)
+    }
+
+@app.get(
+    "/api/perfil/foto/{object_name}",
+    tags=["Perfil & Armazenamento"],
+    summary="Exibir foto de perfil a partir do MinIO"
+)
+def servir_foto_perfil(object_name: str):
+    """Serve a imagem binária recuperada diretamente do MinIO Storage."""
+    response = storage.obter_stream_imagem(object_name)
+    media_type = "image/jpeg"
+    if object_name.endswith(".png"):
+        media_type = "image/png"
+    elif object_name.endswith(".webp"):
+        media_type = "image/webp"
+    return StreamingResponse(response.stream(32 * 1024), media_type=media_type)
 
 # --- ENDPOINTS DO CATÁLOGO ---
 
