@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 class FavoritoCriar(BaseModel):
     tmdb_movie_id: int
