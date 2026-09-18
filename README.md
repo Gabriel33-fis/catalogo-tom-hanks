@@ -13,6 +13,25 @@
 * **Perfil do Professor:** [github.com/siriani](https://github.com/siriani)
 
 ---
+## 📦 Atividade 6 — Armazenamento de Objetos (MinIO & Perfil de Usuário)
+
+### 1. Arquitetura de Armazenamento de Mídia
+Nenhum arquivo binário é armazenado na base de dados relacional. As imagens de perfil enviadas pelos usuários são salvas diretamente em um bucket dedicado no **MinIO Object Storage** (`perfil-fotos`). O SQLite/banco relacional mantém exclusivamente o identificador e metadados (`foto_key`, `bio`, `usuario_id`), evitando inchaço da base e lentidão de backups.
+
+### 2. Trade-off: Stream Seguro vs Leitura Pública
+* **Opção Descartada (Bucket Público):** O bucket exposto publicamente simplificaria a URL, porém eliminaria o controle granular de acesso e auditoria, permitindo varreduras não autenticadas de ativos.
+* **Opção Adotada (Streaming Seguro via API Gateway):** Optou-se por servir as imagens através de endpoint controlado da API (`/api/perfil/foto/{object_name}`) integrado internamente ao SDK do MinIO. Esta abordagem isola o serviço de Object Storage da internet pública (sem portas de host expostas no nó compartilhado) e assegura que somente imagens validadas pelo backend sejam roteadas para o cliente.
+
+### 3. Validações e Controle de Acesso (RBAC)
+* **Validação de Upload:** O serviço valida o tipo MIME (`image/jpeg`, `image/png`, `image/webp`) e bloqueia uploads superiores a 2 MB.
+* **Proteção Contra Edição Cruzada:** Cada requisição valida o ID criptografado no token JWT. Tentativas de alterar a biografia ou foto de outro `usuario_id` são bloqueadas com status **`403 Forbidden`** e registradas no serviço de auditoria.
+
+### 4. Evidências de Funcionamento
+* **Perfil do Usuário com Foto e Bio:**
+  ![Perfil com Foto](prints/print_perfil_foto.png)
+
+* **Tentativa Recusada de Modificação Indevida (HTTP 403):**
+  ![Erro 403 Perfil](prints/print_perfil_403.png)
 
 ---
 
