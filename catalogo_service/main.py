@@ -1100,13 +1100,20 @@ def servir_foto_perfil(object_name: str):
     responses={**RESPOSTAS_ERRO_AUTH, 200: {"description": "Lista dos 30 principais filmes consultados na API do TMDB."}}
 )
 def listar_filmes(usuario: dict = Depends(auth_guard.obter_usuario_atual)):
-    url = f"https://api.themoviedb.org/3/person/31/movie_credits?api_key={TMDB_API_KEY}&language=pt-BR"
+    # URL atualizada usando o endpoint Discover com o ID do Tom Hanks (31)
+    url = f"https://api.themoviedb.org/3/discover/movie?with_cast=31&sort_by=popularity.desc&api_key={TMDB_API_KEY}&language=pt-BR"
+    
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req) as response:
             dados = json.loads(response.read().decode('utf-8'))
-            cast = dados.get("cast", [])
-            return sorted(cast, key=lambda x: x.get("release_date") or "", reverse=True)[:30]
+            # No endpoint discover, os filmes vêm dentro de uma lista chamada 'results'
+            filmes = dados.get("results", [])
+            
+            # Retorna os 30 primeiros (a API retorna 20 por página por padrão, 
+            # mas mantive a lógica de corte caso você adicione paginação depois)
+            return filmes[:30]
+            
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao consultar TMDB: {str(e)}")
 
