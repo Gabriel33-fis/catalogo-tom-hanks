@@ -441,3 +441,6 @@ O projeto consiste em um sistema de microsserviços conteinerizados que consome 
    ```bash
    git clone [https://github.com/Gabriel33-fis/catalogo-tom-hanks.git](https://github.com/Gabriel33-fis/catalogo-tom-hanks.git)
    cd catalogo-tom-hanks
+## Relatório P1 — ISW055
+
+[Relatório bimestral (PDF)](docs/P1_ISW055_Gabriel_Graciano.pdf)
