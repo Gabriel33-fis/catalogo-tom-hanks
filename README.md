@@ -13,6 +13,14 @@
 * **Perfil do Professor:** [github.com/siriani](https://github.com/siriani)
 
 ---
+
+## 📑 Entrega — Avaliação P1
+
+* **Relatório Individual:** [P1_ISW055_Gabriel_Graciano.pdf](docs/P1_ISW055_Gabriel_Graciano.pdf)
+* **Disciplina:** Introdução à Computação em Nuvem (ISW055)
+* **Professor:** [siriani](https://github.com/siriani)
+
+---
 ## 📦 Atividade 6 — Armazenamento de Objetos (MinIO & Perfil de Usuário)
 
 ### 1. Arquitetura de Armazenamento de Mídia
